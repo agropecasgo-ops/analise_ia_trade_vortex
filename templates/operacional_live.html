@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Live Operacional Grafico - FinanceAI{% endblock %}
+
+{% block content %}
+<div class="live-shell operacional-live-shell">
+    <div class="risk-disclaimer">
+        Live operacional grafico educativo. Usa apenas leitura visual de candles, contexto, pullback, rejeicao, rompimento, falso rompimento e risco operacional.
+    </div>
+
+    <div class="live-toolbar operacional-live-toolbar">
+        <div class="asset-timeframe-selector">
+            <select id="opLiveMarketSelect" class="form-control-premium">
+                <option value="crypto">Criptomoedas</option>
+            </select>
+            <select id="opLiveAssetSelect" class="form-control-premium">
+                <option value="BTCUSDT">BTCUSDT - Bitcoin</option>
+            </select>
+            <div class="timeframe-buttons">
+                <button class="tf-btn" data-op-live-tf="1m">1m</button>
+                <button class="tf-btn" data-op-live-tf="5m">5m</button>
+                <button class="tf-btn active" data-op-live-tf="15m">15m</button>
+                <button class="tf-btn" data-op-live-tf="1h">1h</button>
+                <button class="tf-btn" data-op-live-tf="4h">4h</button>
+            </div>
+        </div>
+        <div class="live-market-strip">
+            <div><span>Preco</span><strong id="opLivePrice">--</strong></div>
+            <div><span>Cenario</span><strong id="opLiveScenario">--</strong></div>
+            <div><span>Mercado</span><strong id="opLiveMarketStatus">--</strong></div>
+            <div><span>Fonte</span><strong id="opLiveDataSource">--</strong></div>
+            <div><span>Conexao</span><strong id="opLiveConnection">--</strong></div>
+        </div>
+        <button class="live-signals-open" id="btnOpLiveSignals" type="button">
+            <i class="fas fa-satellite-dish"></i>
+            <span>Sinais Operacionais</span>
+            <strong id="opLiveSignalsCount">0</strong>
+        </button>
+    </div>
+
+    <div class="live-grid">
+        <section class="live-chart-panel operacional-live-chart-panel">
+            <div class="chart-header-pro">
+                <h3>Live Operacional Grafico - <span id="opLiveChartTitle">BTCUSDT · 15m</span></h3>
+                <div class="chart-tools">
+                    <button class="chart-tool-btn" id="opLiveVoiceToggle" title="Voz operacional">
+                        <i class="fas fa-volume-mute"></i>
+                    </button>
+                    <button class="chart-tool-btn" id="opLiveFitChart" title="Ajustar grafico">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="opLiveChart" class="live-chart"></div>
+        </section>
+
+        <aside class="live-ia-panel operacional-live-panel">
+            <div class="live-status-card" id="opLiveStatusCard">
+                <span>Status Operacional Grafico</span>
+                <strong id="opLiveStatus">ANALISANDO</strong>
+                <p id="opLiveMainMessage">Lendo contexto operacional do grafico...</p>
+            </div>
+
+            <div class="live-metrics-grid">
+                <div><span>Direcao</span><strong id="opLiveDirection">--</strong></div>
+                <div><span>Agressiva</span><strong id="opLiveAggressive">--</strong></div>
+                <div><span>Conservadora</span><strong id="opLiveConservative">--</strong></div>
+                <div><span>Confianca</span><strong id="opLiveConfidence">--</strong></div>
+                <div><span>Forca</span><strong id="opLiveStrength">--</strong></div>
+                <div><span>R/R</span><strong id="opLiveRiskReward">--</strong></div>
+            </div>
+
+            <div class="analysis-card live-levels-card">
+                <div class="card-title">Plano Operacional</div>
+                <div class="risk-levels">
+                    <div class="level"><span class="level-name">Entrada</span><span class="level-price" id="opLiveEntry">--</span></div>
+                    <div class="level"><span class="level-name">Stop</span><span class="level-price" id="opLiveStop">--</span></div>
+                    <div class="level"><span class="level-name">Take 1</span><span class="level-price" id="opLiveTake1">--</span></div>
+                    <div class="level"><span class="level-name">Take 2</span><span class="level-price" id="opLiveTake2">--</span></div>
+                </div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Justificativa Operacional</div>
+                <div class="live-reason" id="opLiveReason">--</div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Narracao Operacional</div>
+                <div class="live-message-feed" id="opLiveMessageFeed"></div>
+            </div>
+
+            <div class="analysis-card voice-card">
+                <div class="card-title">Voz IA Operacional</div>
+                <div class="validation-stack">
+                    <div><span>Status</span><strong id="opVoiceStatus">DESLIGADA</strong></div>
+                    <div><span>Escopo</span><strong>Leitura grafica</strong></div>
+                </div>
+                <div class="voice-controls">
+                    <button class="btn-run-backtest" id="opVoiceToggle" type="button">Ativar voz</button>
+                    <button class="btn-run-backtest" id="opVoiceStop" type="button">Parar</button>
+                    <label>Volume <input id="opVoiceVolume" type="range" min="0" max="1" step="0.05" value="0.85"></label>
+                </div>
+                <div class="institutional-explanation">Ultima mensagem: <span id="opVoiceLastMessage">--</span></div>
+            </div>
+        </aside>
+    </div>
+
+    <section class="live-signals-panel" id="op-live-signals">
+        <div class="card-header-detailed">
+            <h3>Sinais Operacionais Ao Vivo</h3>
+            <span class="badge-ai">Somente leitura grafica</span>
+        </div>
+        <div class="live-signals-grid" id="opLiveSignalsGrid">
+            <div class="live-empty-signal">Aguardando contexto operacional.</div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='js/operacional-live.js') }}"></script>
+{% endblock %}

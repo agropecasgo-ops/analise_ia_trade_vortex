@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Live Trading IA - FinanceAI{% endblock %}
+
+{% block content %}
+<div class="live-shell">
+    <div class="risk-disclaimer">
+        Analise educativa. Nao e recomendacao financeira. Toda operacao envolve risco.
+    </div>
+
+    <div class="live-toolbar">
+        <div class="asset-timeframe-selector">
+            <select id="liveMarketSelect" class="form-control-premium">
+                <option value="crypto">Criptomoedas</option>
+            </select>
+            <select id="liveAssetSelect" class="form-control-premium">
+                <option value="BTCUSDT">BTCUSDT - Bitcoin</option>
+            </select>
+            <div class="timeframe-buttons">
+                <button class="tf-btn" data-live-tf="1m">1m</button>
+                <button class="tf-btn" data-live-tf="5m">5m</button>
+                <button class="tf-btn active" data-live-tf="15m">15m</button>
+                <button class="tf-btn" data-live-tf="1h">1h</button>
+                <button class="tf-btn" data-live-tf="4h">4h</button>
+            </div>
+        </div>
+        <div class="live-market-strip">
+            <div><span>Preco</span><strong id="livePrice">--</strong></div>
+            <div><span>Candle</span><strong id="liveCountdown">--</strong></div>
+            <div><span>Mercado</span><strong id="liveMarketStatus">--</strong></div>
+            <div><span>Fonte</span><strong id="liveDataSource">--</strong></div>
+            <div><span>Conexao</span><strong id="liveConnection">--</strong></div>
+        </div>
+        <button class="live-signals-open" id="btnLiveSignals" type="button">
+            <i class="fas fa-satellite-dish"></i>
+            <span>Sinais IA</span>
+            <strong id="liveSignalsCount">0</strong>
+        </button>
+    </div>
+
+    <div class="live-grid">
+        <section class="live-chart-panel">
+            <div class="chart-header-pro">
+                <h3>Live Trading IA - <span id="liveChartTitle">BTCUSDT · 15m</span></h3>
+                <div class="chart-tools">
+                    <button class="chart-tool-btn" id="liveSoundToggle" title="Alertas sonoros">
+                        <i class="fas fa-volume-mute"></i>
+                    </button>
+                    <button class="chart-tool-btn" id="liveFitChart" title="Ajustar grafico">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="liveChart" class="live-chart"></div>
+        </section>
+
+        <aside class="live-ia-panel">
+            <div class="live-status-card" id="liveStatusCard">
+                <span>Status Operacional</span>
+                <strong id="liveOperationalStatus">ANALISANDO</strong>
+                <p id="liveMainMessage">Analisando estrutura do mercado...</p>
+            </div>
+
+            <div class="live-metrics-grid">
+                <div><span>Score</span><strong id="liveScore">--</strong></div>
+                <div><span>Confianca</span><strong id="liveConfidence">--</strong></div>
+                <div><span>Direcao</span><strong id="liveDirection">--</strong></div>
+                <div><span>Tendencia</span><strong id="liveTrendStrength">--</strong></div>
+                <div><span>Volume</span><strong id="liveVolumeStrength">--</strong></div>
+                <div><span>R/R</span><strong id="liveRiskReward">--</strong></div>
+            </div>
+
+            <div class="analysis-card live-levels-card">
+                <div class="card-title">Niveis Operacionais</div>
+                <div class="risk-levels">
+                    <div class="level"><span class="level-name">Entrada Ag.</span><span class="level-price" id="liveAggressiveEntry">--</span></div>
+                    <div class="level"><span class="level-name">Entrada Cons.</span><span class="level-price" id="liveConservativeEntry">--</span></div>
+                    <div class="level"><span class="level-name">Stop</span><span class="level-price" id="liveStopLoss">--</span></div>
+                    <div class="level"><span class="level-name">Take</span><span class="level-price" id="liveTakeProfit">--</span></div>
+                </div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Motivo da IA</div>
+                <div class="live-reason" id="liveReason">--</div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Mensagens da Mesa</div>
+                <div class="live-message-feed" id="liveMessageFeed"></div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Invalidacoes</div>
+                <div class="live-invalidations" id="liveInvalidations"></div>
+            </div>
+
+            <div class="analysis-card voice-card">
+                <div class="card-title">Voz IA</div>
+                <div class="validation-stack">
+                    <div><span>Status</span><strong id="voiceStatus">DESLIGADA</strong></div>
+                    <div><span>Idioma</span><strong>pt-BR</strong></div>
+                </div>
+                <div class="voice-controls">
+                    <button class="btn-run-backtest" id="voiceToggle" type="button">Ativar voz</button>
+                    <button class="btn-run-backtest" id="voiceTest" type="button">Testar voz</button>
+                    <button class="btn-run-backtest" id="voiceStop" type="button">Parar</button>
+                    <label>Volume <input id="voiceVolume" type="range" min="0" max="1" step="0.05" value="0.85"></label>
+                    <label>Velocidade <input id="voiceRate" type="range" min="0.6" max="1.6" step="0.05" value="1"></label>
+                    <select id="voiceSelect" class="form-control-premium"></select>
+                </div>
+                <div class="institutional-explanation">Ultima mensagem: <span id="voiceLastMessage">--</span></div>
+                <div class="institutional-explanation">As mensagens de voz sao educativas e nao constituem recomendacao financeira.</div>
+            </div>
+        </aside>
+    </div>
+
+    <section class="live-signals-panel" id="signals">
+        <div class="card-header-detailed">
+            <h3>Sinais IA em Tempo Real</h3>
+            <span class="badge-ai" id="liveSignalsBadge">Oportunidades em tempo real</span>
+        </div>
+        <div class="risk-disclaimer">
+            Analise educativa. Nao constitui recomendacao financeira. Toda operacao envolve risco.
+        </div>
+        <div class="live-signals-grid" id="liveSignalsGrid">
+            <div class="live-empty-signal">Aguardando confluencia forte da IA...</div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="{{ url_for('static', filename='js/voice-assistant.js') }}"></script>
+<script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='js/live-trading.js') }}"></script>
+{% endblock %}

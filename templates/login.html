@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinanceAI Institucional - Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/advanced.css') }}">
+</head>
+<body class="login-body">
+    <main class="login-shell">
+        <section class="login-panel">
+            <div>
+                <span class="terminal-label">FinanceAI Institutional</span>
+                <h1>Trading desk em tempo real</h1>
+                <p>Login local para watchlist, alertas e configuracoes operacionais.</p>
+            </div>
+            {% if error %}
+            <div class="login-error">{{ error }}</div>
+            {% endif %}
+            <form method="post" class="login-form">
+                <label>
+                    Usuario
+                    <input name="username" autocomplete="username" value="admin" required>
+                </label>
+                <label>
+                    Senha
+                    <input name="password" type="password" autocomplete="current-password" value="admin123" required>
+                </label>
+                <button type="submit">Entrar</button>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

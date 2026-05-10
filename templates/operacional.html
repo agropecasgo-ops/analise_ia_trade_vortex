@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Operacional Leitura Grafica - FinanceAI{% endblock %}
+
+{% block content %}
+<div class="operacional-shell">
+    <div class="risk-disclaimer">
+        Leitura grafica educativa baseada em contexto operacional. Nao constitui recomendacao financeira.
+    </div>
+
+    <section class="operacional-toolbar">
+        <div class="operacional-title">
+            <span class="badge-ai">Nucleo independente</span>
+            <h1>Operacional Leitura Grafica</h1>
+            <p>Leitura contextual candle a candle, estrutura, liquidez, pullback, rompimento, invalidação e risco.</p>
+        </div>
+        <div class="asset-timeframe-selector operacional-selectors">
+            <select id="operacionalMarket" class="form-control-premium">
+                <option value="crypto">Criptomoedas</option>
+            </select>
+            <select id="operacionalAsset" class="form-control-premium">
+                <option value="BTCUSDT">BTCUSDT - Bitcoin / USDT</option>
+            </select>
+            <select id="operacionalTimeframe" class="form-control-premium">
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m" selected>15m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+                <option value="1d">1d</option>
+            </select>
+            <button class="btn-run-backtest" id="operacionalRefresh" type="button">
+                <i class="fas fa-rotate"></i>
+                Atualizar leitura
+            </button>
+        </div>
+    </section>
+
+    <section class="operacional-status-strip">
+        <div><span>Ativo</span><strong id="opSymbol">BTCUSDT</strong></div>
+        <div><span>Mercado</span><strong id="opMarket">--</strong></div>
+        <div><span>Fonte</span><strong id="opSource">--</strong></div>
+        <div><span>Status</span><strong id="opMarketStatus">--</strong></div>
+        <div><span>Contexto</span><strong id="opContext">--</strong></div>
+        <div><span>Direcao Provavel</span><strong id="opBias">--</strong></div>
+    </section>
+
+    <div class="operacional-grid">
+        <section class="operacional-chart-panel">
+            <div class="chart-header-pro">
+                <h3>Grafico Operacional - <span id="opChartTitle">BTCUSDT · 15m</span></h3>
+                <div class="chart-tools">
+                    <button class="chart-tool-btn" id="opFitChart" title="Ajustar grafico">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="operacionalChart" class="operacional-chart"></div>
+        </section>
+
+        <aside class="operacional-reading-panel">
+            <div class="live-status-card operacional-context-card" id="opContextCard">
+                <span>Contexto Operacional</span>
+                <strong id="opDominantContext">ANALISANDO</strong>
+                <p id="opMainNarrative">Carregando leitura grafica independente...</p>
+            </div>
+
+            <div class="live-metrics-grid">
+                <div><span>Forca Movimento</span><strong id="opMovementStrength">--</strong></div>
+                <div><span>Qualidade</span><strong id="opQuality">--</strong></div>
+                <div><span>Risco</span><strong id="opScenarioRisk">--</strong></div>
+                <div><span>Timing</span><strong id="opTiming">--</strong></div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Narrativa Operacional</div>
+                <div class="operacional-narrative" id="opNarrative"></div>
+            </div>
+        </aside>
+    </div>
+
+    <div class="operacional-panels">
+        <section class="analysis-card">
+            <div class="card-title">Candle a Candle</div>
+            <div class="operacional-candle-flow" id="opCandleFlow"></div>
+        </section>
+
+        <section class="analysis-card">
+            <div class="card-title">Estrutura e Zonas</div>
+            <div class="validation-stack operacional-stack" id="opStructure"></div>
+        </section>
+
+        <section class="analysis-card">
+            <div class="card-title">Confirmacoes</div>
+            <div class="live-message-feed" id="opConfirmations"></div>
+        </section>
+
+        <section class="analysis-card">
+            <div class="card-title">Invalidacoes</div>
+            <div class="live-invalidations" id="opInvalidations"></div>
+        </section>
+
+        <section class="analysis-card">
+            <div class="card-title">Gerenciamento de Risco</div>
+            <div class="risk-levels" id="opRisk"></div>
+        </section>
+
+        <section class="analysis-card">
+            <div class="card-title">Plano de Trade Contextual</div>
+            <div class="live-reason" id="opRecommendation">--</div>
+        </section>
+
+        <section class="analysis-card operacional-live-card">
+            <div class="card-title">Live Operacional Grafico</div>
+            <div class="live-message-feed" id="opLiveFeed">
+                <div class="live-empty-signal">Aguardando candles em tempo real.</div>
+            </div>
+        </section>
+
+        <section class="analysis-card operacional-signal-card">
+            <div class="card-title">Sinais Operacionais Graficos</div>
+            <div class="validation-stack operacional-stack" id="opSignalBox"></div>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='js/operacional.js') }}"></script>
+{% endblock %}

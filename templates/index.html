@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-content">
+    <!-- Controles Superiores -->
+    <div class="controls-section">
+        <div class="controls-left">
+            <!-- Seletor de Ativo -->
+            <div class="asset-selector">
+                <label for="assetSelect">Ativo:</label>
+                <select id="assetSelect" class="form-select">
+                    <option value="PETR4">PETR4 - Petrobras</option>
+                    <option value="VALE3">VALE3 - Vale</option>
+                    <option value="WEGE3">WEGE3 - Weg</option>
+                    <option value="ITUB4">ITUB4 - Itaú</option>
+                    <option value="BBDC4">BBDC4 - Banco Bradesco</option>
+                    <option value="ABEV3">ABEV3 - Ambev</option>
+                    <option value="JBSS3">JBSS3 - JBS</option>
+                    <option value="RENT3">RENT3 - Localiza</option>
+                </select>
+            </div>
+            
+            <!-- Seletor de Timeframe -->
+            <div class="timeframe-selector">
+                <label>Período:</label>
+                <div class="btn-group" role="group">
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-1m" value="1m">
+                    <label class="btn btn-timeframe" for="tf-1m">1m</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-5m" value="5m">
+                    <label class="btn btn-timeframe" for="tf-5m">5m</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-15m" value="15m">
+                    <label class="btn btn-timeframe" for="tf-15m">15m</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-1h" value="1h" checked>
+                    <label class="btn btn-timeframe" for="tf-1h">1h</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-4h" value="4h">
+                    <label class="btn btn-timeframe" for="tf-4h">4h</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-1d" value="1d">
+                    <label class="btn btn-timeframe" for="tf-1d">1d</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-1w" value="1w">
+                    <label class="btn btn-timeframe" for="tf-1w">1w</label>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls-right">
+            <button class="btn btn-action" id="btnRefresh">
+                <i class="fas fa-sync-alt"></i> Atualizar
+            </button>
+            <button class="btn btn-action" id="btnAlert">
+                <i class="fas fa-plus"></i> Novo Alerta
+            </button>
+        </div>
+    </div>
+    
+    <!-- Cards de Mercado -->
+    <div class="market-cards-section">
+        <div class="market-card">
+            <div class="card-header">
+                <span class="card-title">PETR4</span>
+                <span class="badge-positive">+2.45%</span>
+            </div>
+            <div class="card-price">R$ 28,35</div>
+            <div class="card-info">
+                <div class="info-item">
+                    <span class="label">Máx:</span>
+                    <span class="value">29,50</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Mín:</span>
+                    <span class="value">27,80</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Vol:</span>
+                    <span class="value">2.5M</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="market-card">
+            <div class="card-header">
+                <span class="card-title">VALE3</span>
+                <span class="badge-negative">-1.23%</span>
+            </div>
+            <div class="card-price">R$ 56,78</div>
+            <div class="card-info">
+                <div class="info-item">
+                    <span class="label">Máx:</span>
+                    <span class="value">58,20</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Mín:</span>
+                    <span class="value">56,10</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Vol:</span>
+                    <span class="value">1.8M</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="market-card">
+            <div class="card-header">
+                <span class="card-title">WEGE3</span>
+                <span class="badge-positive">+3.12%</span>
+            </div>
+            <div class="card-price">R$ 42,15</div>
+            <div class="card-info">
+                <div class="info-item">
+                    <span class="label">Máx:</span>
+                    <span class="value">43,80</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Mín:</span>
+                    <span class="value">40,90</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Vol:</span>
+                    <span class="value">3.2M</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="market-card">
+            <div class="card-header">
+                <span class="card-title">IBOV</span>
+                <span class="badge-positive">+1.67%</span>
+            </div>
+            <div class="card-price">135.450</div>
+            <div class="card-info">
+                <div class="info-item">
+                    <span class="label">Máx:</span>
+                    <span class="value">136,200</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Mín:</span>
+                    <span class="value">133,500</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Vol:</span>
+                    <span class="value">15.8M</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Gráfico Principal e Sinais -->
+    <div class="chart-section">
+        <div class="chart-container">
+            <div class="chart-header">
+                <h3>Gráfico - PETR4</h3>
+                <div class="chart-controls">
+                    <button class="btn-icon-small active">Velas</button>
+                    <button class="btn-icon-small">Linha</button>
+                    <button class="btn-icon-small">Áreas</button>
+                </div>
+            </div>
+            <canvas id="mainChart"></canvas>
+        </div>
+        
+        <div class="signals-panel">
+            <div class="panel-header">
+                <h3>Sinais IA</h3>
+                <span class="signal-indicator">Em Tempo Real</span>
+            </div>
+            
+            <div class="signals-list">
+                <div class="signal-item signal-buy">
+                    <div class="signal-icon">
+                        <i class="fas fa-arrow-up"></i>
+                    </div>
+                    <div class="signal-content">
+                        <div class="signal-title">Sinal de COMPRA</div>
+                        <div class="signal-time">Há 2 minutos</div>
+                        <div class="signal-confidence">
+                            <span>Confiança:</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width: 92%"></div>
+                            </div>
+                            <span>92%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="signal-item signal-sell">
+                    <div class="signal-icon">
+                        <i class="fas fa-arrow-down"></i>
+                    </div>
+                    <div class="signal-content">
+                        <div class="signal-title">Sinal de VENDA</div>
+                        <div class="signal-time">Há 15 minutos</div>
+                        <div class="signal-confidence">
+                            <span>Confiança:</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width: 78%"></div>
+                            </div>
+                            <span>78%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="signal-item signal-hold">
+                    <div class="signal-icon">
+                        <i class="fas fa-pause"></i>
+                    </div>
+                    <div class="signal-content">
+                        <div class="signal-title">Sinal de ESPERA</div>
+                        <div class="signal-time">Há 45 minutos</div>
+                        <div class="signal-confidence">
+                            <span>Confiança:</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width: 65%"></div>
+                            </div>
+                            <span>65%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="signal-item signal-buy">
+                    <div class="signal-icon">
+                        <i class="fas fa-arrow-up"></i>
+                    </div>
+                    <div class="signal-content">
+                        <div class="signal-title">Oportunidade de ENTRADA</div>
+                        <div class="signal-time">Há 1 hora</div>
+                        <div class="signal-confidence">
+                            <span>Confiança:</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width: 88%"></div>
+                            </div>
+                            <span>88%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Estratégias e Alertas -->
+    <div class="bottom-section">
+        <div class="strategies-panel">
+            <div class="panel-header">
+                <h3>Estratégias Ativas</h3>
+                <button class="btn-small">+ Nova</button>
+            </div>
+            
+            <div class="strategies-list">
+                <div class="strategy-item">
+                    <div class="strategy-status active"></div>
+                    <div class="strategy-content">
+                        <div class="strategy-name">Média Móvel Cruzada</div>
+                        <div class="strategy-details">
+                            <span class="badge-info">MA20/MA50</span>
+                            <span class="badge-success">Lucro: +5.23%</span>
+                        </div>
+                    </div>
+                    <div class="strategy-return">+5.23%</div>
+                </div>
+                
+                <div class="strategy-item">
+                    <div class="strategy-status active"></div>
+                    <div class="strategy-content">
+                        <div class="strategy-name">RSI Extremo</div>
+                        <div class="strategy-details">
+                            <span class="badge-info">RSI<30 ou >70</span>
+                            <span class="badge-warning">Lucro: +2.15%</span>
+                        </div>
+                    </div>
+                    <div class="strategy-return">+2.15%</div>
+                </div>
+                
+                <div class="strategy-item">
+                    <div class="strategy-status inactive"></div>
+                    <div class="strategy-content">
+                        <div class="strategy-name">Suporte Resistência</div>
+                        <div class="strategy-details">
+                            <span class="badge-info">Breakout</span>
+                            <span class="badge-danger">Lucro: -1.80%</span>
+                        </div>
+                    </div>
+                    <div class="strategy-return">-1.80%</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="alerts-panel">
+            <div class="panel-header">
+                <h3>Alertas</h3>
+                <button class="btn-small">Limpar</button>
+            </div>
+            
+            <div class="alerts-list">
+                <div class="alert-item alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div class="alert-content">
+                        <div class="alert-title">Preço se aproximando da resistência</div>
+                        <div class="alert-asset">PETR4 - R$ 28,35</div>
+                        <div class="alert-time">2 minutos atrás</div>
+                    </div>
+                </div>
+                
+                <div class="alert-item alert-danger">
+                    <i class="fas fa-times-circle"></i>
+                    <div class="alert-content">
+                        <div class="alert-title">Stop Loss acionado</div>
+                        <div class="alert-asset">VALE3 - R$ 56,78</div>
+                        <div class="alert-time">15 minutos atrás</div>
+                    </div>
+                </div>
+                
+                <div class="alert-item alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <div class="alert-content">
+                        <div class="alert-title">Análise técnica atualizada</div>
+                        <div class="alert-asset">WEGE3 - Novo máximo</div>
+                        <div class="alert-time">1 hora atrás</div>
+                    </div>
+                </div>
+                
+                <div class="alert-item alert-success">
+                    <i class="fas fa-check-circle"></i>
+                    <div class="alert-content">
+                        <div class="alert-title">Take Profit realizado</div>
+                        <div class="alert-asset">ITUB4 - +3.45%</div>
+                        <div class="alert-time">3 horas atrás</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Dados fictícios para o gráfico
+    const chartData = {
+        labels: ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00'],
+        datasets: [{
+            label: 'PETR4',
+            data: [27.50, 27.65, 27.80, 28.00, 28.15, 28.05, 27.95, 28.10, 28.25, 28.40, 28.35, 28.50, 28.35],
+            borderColor: '#00d4ff',
+            backgroundColor: 'rgba(0, 212, 255, 0.1)',
+            borderWidth: 2,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 4,
+            pointBackgroundColor: '#00d4ff',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointHoverRadius: 6
+        }]
+    };
+    
+    const ctx = document.getElementById('mainChart').getContext('2d');
+    const mainChart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: '#a0aec0',
+                        font: { size: 12 }
+                    }
+                },
+                filler: {
+                    propagate: true
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    grid: {
+                        color: 'rgba(160, 174, 192, 0.1)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#a0aec0'
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false,
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#a0aec0'
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

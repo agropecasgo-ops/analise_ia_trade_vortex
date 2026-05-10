@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="professional-dashboard">
+    <div class="risk-disclaimer" id="riskDisclaimer">
+        Esta analise e educativa e nao constitui recomendacao financeira. O sistema nao garante lucro. Toda operacao envolve risco.
+    </div>
+    <div class="top-controls">
+        <div class="controls-left">
+            <div class="asset-timeframe-selector">
+                <select id="marketSelect" class="form-control-premium">
+                    <option value="crypto">Criptomoedas</option>
+                </select>
+                <select id="assetSelect" class="form-control-premium">
+                    <option value="BTCUSDT">BTCUSDT - Bitcoin</option>
+                    <option value="ETHUSDT">ETHUSDT - Ethereum</option>
+                    <option value="BNBUSDT">BNBUSDT - BNB</option>
+                    <option value="SOLUSDT">SOLUSDT - Solana</option>
+                </select>
+
+                <div class="timeframe-buttons">
+                    <button class="tf-btn" data-tf="1m">1m</button>
+                    <button class="tf-btn" data-tf="5m">5m</button>
+                    <button class="tf-btn" data-tf="15m">15m</button>
+                    <button class="tf-btn active" data-tf="1h">1h</button>
+                    <button class="tf-btn" data-tf="4h">4h</button>
+                    <button class="tf-btn" data-tf="1d">1d</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-right">
+            <div class="info-display">
+                <div class="info-item">
+                    <span class="label">Preco</span>
+                    <span class="value" id="currentPrice">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Var 24h</span>
+                    <span class="value" id="priceChange">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Score</span>
+                    <span class="value" id="operationalScore">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Status</span>
+                    <span class="value live-status" id="connectionState">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Fonte</span>
+                    <span class="value" id="dataSource">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Mercado</span>
+                    <span class="value" id="marketState">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Atualizado</span>
+                    <span class="value" id="lastUpdate">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Trades/s</span>
+                    <span class="value" id="tradeSpeed">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="signal-strip">
+        <div class="signal-pill signal-buy">
+            <span>COMPRA</span>
+            <strong id="buyCardState">--</strong>
+        </div>
+        <div class="signal-pill signal-sell">
+            <span>VENDA</span>
+            <strong id="sellCardState">--</strong>
+        </div>
+        <div class="signal-pill signal-neutral">
+            <span>NEUTRO</span>
+            <strong id="neutralCardState">--</strong>
+        </div>
+        <div class="signal-pill signal-wait">
+            <span>AGUARDAR</span>
+            <strong id="waitCardState">--</strong>
+        </div>
+    </div>
+
+    <div class="main-grid">
+        <div class="chart-section-pro">
+            <div class="chart-header-pro">
+                <h3>Grafico Candlestick - <span id="chartTitle">BTCUSDT</span></h3>
+                <div class="chart-tools">
+                    <a class="chart-tool-link" href="{{ url_for('live') }}" title="Abrir Live Trading IA">
+                        <i class="fas fa-bolt"></i>
+                        Live IA
+                    </a>
+                    <a class="chart-tool-link" href="{{ url_for('live') }}#signals" title="Abrir Sinais IA em tempo real">
+                        <i class="fas fa-satellite-dish"></i>
+                        Sinais IA
+                    </a>
+                    <button class="chart-tool-btn" data-chart-action="fit" title="Ajustar grafico">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="chart-container" class="trading-chart"></div>
+        </div>
+
+        <div class="analysis-panel-right">
+            <div class="analysis-card score-card">
+                <div class="card-title">Score Operacional</div>
+                <div class="score-display">
+                    <div class="score-circle">
+                        <svg viewBox="0 0 100 100" class="score-gauge">
+                            <circle cx="50" cy="50" r="45" fill="none" stroke="var(--border-color)" stroke-width="8"></circle>
+                            <circle cx="50" cy="50" r="45" fill="none" stroke="var(--accent-green)" stroke-width="8" stroke-dasharray="0 282" class="gauge-fill"></circle>
+                        </svg>
+                        <div class="score-number" id="scoreValue">--</div>
+                    </div>
+                    <div class="score-text" id="scoreText">Aguardando mercado</div>
+                    <div class="signal-confidence">Score final: <span id="finalScoreValue">--</span>/10</div>
+                </div>
+            </div>
+
+            <div class="analysis-card signal-card">
+                <div class="card-title">Sinal Real da IA</div>
+                <div class="signal-type" id="mainSignal">NEUTRO</div>
+                <div class="signal-confidence">
+                    <span>Confianca: <span id="confidenceValue">--</span></span>
+                </div>
+                <div class="validation-stack signal-mode-stack">
+                    <div><span>Agressiva</span><strong id="entryAggressive">--</strong></div>
+                    <div><span>Conservadora</span><strong id="entryConservative">--</strong></div>
+                </div>
+            </div>
+
+            <div class="analysis-card risk-card">
+                <div class="card-title">Risco/Retorno</div>
+                <div class="risk-levels">
+                    <div class="level">
+                        <span class="level-name">Entrada</span>
+                        <span class="level-price" id="levelEntrada">--</span>
+                    </div>
+                    <div class="level">
+                        <span class="level-name">Entrada Cons.</span>
+                        <span class="level-price" id="levelEntradaConservadora">--</span>
+                    </div>
+                    <div class="level">
+                        <span class="level-name">Stop</span>
+                        <span class="level-price" id="levelStop">--</span>
+                    </div>
+                    <div class="level">
+                        <span class="level-name">Take 1</span>
+                        <span class="level-price" id="levelTarget1">--</span>
+                    </div>
+                    <div class="level">
+                        <span class="level-name">Take 2</span>
+                        <span class="level-price" id="levelTarget2">--</span>
+                    </div>
+                </div>
+                <div class="risk-ratio">R/R: <span id="riskRatio">--</span></div>
+                <div class="risk-ratio">Cancelamento: <span id="cancelScenario">--</span></div>
+            </div>
+
+            <div class="analysis-card multi-tf-card">
+                <div class="card-title">Heatmap Multi-Timeframe</div>
+                <div class="multi-tf-grid">
+                    <div class="tf-analysis">
+                        <span class="tf-label">5m</span>
+                        <span class="tf-signal" id="tf5m">--</span>
+                    </div>
+                    <div class="tf-analysis">
+                        <span class="tf-label">15m</span>
+                        <span class="tf-signal" id="tf15m">--</span>
+                    </div>
+                    <div class="tf-analysis">
+                        <span class="tf-label">1h</span>
+                        <span class="tf-signal" id="tf1h">--</span>
+                    </div>
+                    <div class="tf-analysis">
+                        <span class="tf-label">4h</span>
+                        <span class="tf-signal" id="tf4h">--</span>
+                    </div>
+                    <div class="tf-analysis">
+                        <span class="tf-label">1d</span>
+                        <span class="tf-signal" id="tf1d">--</span>
+                    </div>
+                </div>
+                <div class="risk-ratio mtf-confluence">
+                    Confluencia: <span id="mtfConfluence">--</span>
+                </div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="card-title">Validacao Operacional</div>
+                <div class="validation-stack">
+                    <div><span>Qualidade</span><strong id="entryQuality">--</strong></div>
+                    <div><span>Probabilidade</span><strong id="probabilityScore">--</strong></div>
+                    <div><span>Cenario</span><strong id="scenarioAction">--</strong></div>
+                    <div><span>Invalidacao</span><strong id="invalidatedState">--</strong></div>
+                </div>
+            </div>
+
+            <div class="analysis-card institutional-card">
+                <div class="card-title">Contexto Institucional</div>
+                <div class="validation-stack">
+                    <div><span>SMC Score</span><strong id="institutionalSmcScore">--</strong></div>
+                    <div><span>Wyckoff</span><strong id="institutionalWyckoffPhase">--</strong></div>
+                    <div><span>Vies</span><strong id="institutionalBias">--</strong></div>
+                    <div><span>Rompimento</span><strong id="institutionalBreakout">--</strong></div>
+                </div>
+                <div class="institutional-explanation" id="institutionalExplanation">--</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="detailed-analysis" id="analysis">
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Justificativa da IA</h3>
+                <span class="badge-ai">Binance Real</span>
+            </div>
+            <div class="reasoning-list" id="reasoningList">
+                <div class="reasoning-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Aguardando dados reais da Binance...</span>
+                </div>
+            </div>
+            <div class="reasoning-list invalidation-list" id="invalidationList"></div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Suporte e Resistencia</h3>
+            </div>
+            <div class="support-resistance-list" id="srList"></div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Indicadores Tecnicos</h3>
+            </div>
+            <div class="indicators-grid">
+                <div class="indicator">
+                    <span class="ind-name">RSI 14</span>
+                    <span class="ind-value" id="rsiValue">--</span>
+                    <span class="ind-status">Momentum</span>
+                </div>
+                <div class="indicator">
+                    <span class="ind-name">MACD</span>
+                    <span class="ind-value" id="macdValue">--</span>
+                    <span class="ind-status">Forca</span>
+                </div>
+                <div class="indicator">
+                    <span class="ind-name">ATR 14</span>
+                    <span class="ind-value" id="atrValue">--</span>
+                    <span class="ind-status">Volatilidade</span>
+                </div>
+                <div class="indicator">
+                    <span class="ind-name">Volume</span>
+                    <span class="ind-value" id="volumeValue">--</span>
+                    <span class="ind-status">Real</span>
+                </div>
+                <div class="indicator">
+                    <span class="ind-name">VWAP</span>
+                    <span class="ind-value" id="vwapValue">--</span>
+                    <span class="ind-status">Preco medio</span>
+                </div>
+                <div class="indicator">
+                    <span class="ind-name">EMA 9 / 21</span>
+                    <span class="ind-value" id="emaValue">--</span>
+                    <span class="ind-status">Tendencia curta</span>
+                </div>
+                <div class="indicator full-width">
+                    <span class="ind-name">Bollinger Bands</span>
+                    <span class="ind-value" id="bbValue">--</span>
+                    <span class="ind-status">Faixa de volatilidade</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Leitura de Candles</h3>
+            </div>
+            <div class="candle-reading-list" id="candleReadingList"></div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Heatmap de Tendencia</h3>
+            </div>
+            <div class="heatmap-container" id="heatmapContainer">
+                <div class="heatmap-grid"></div>
+            </div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Smart Money Concepts</h3>
+                <span class="badge-ai">SMC</span>
+            </div>
+            <div class="smc-grid">
+                <div><span>BOS</span><strong id="smcBos">--</strong></div>
+                <div><span>CHOCH</span><strong id="smcChoch">--</strong></div>
+                <div><span>Zona Liquidez</span><strong id="smcLiquidityZone">--</strong></div>
+                <div><span>Order Block Prox.</span><strong id="smcNearestOb">--</strong></div>
+                <div><span>FVG Relevante</span><strong id="smcRelevantFvg">--</strong></div>
+                <div><span>Confirmacao</span><strong id="smcConfirmed">--</strong></div>
+                <div><span>Invalidacao</span><strong id="smcInvalidated">--</strong></div>
+                <div><span>Sweep</span><strong id="smcSweep">--</strong></div>
+                <div><span>Lateralizacao</span><strong id="lateralState">--</strong></div>
+            </div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Wyckoff</h3>
+                <span class="badge-ai">Contexto</span>
+            </div>
+            <div class="smc-grid">
+                <div><span>Fase Provavel</span><strong id="wyckoffPhase">--</strong></div>
+                <div><span>Vies</span><strong id="wyckoffBias">--</strong></div>
+                <div><span>Acumulacao</span><strong id="wyckoffAccumulation">--</strong></div>
+                <div><span>Distribuicao</span><strong id="wyckoffDistribution">--</strong></div>
+                <div><span>Spring</span><strong id="wyckoffSpring">--</strong></div>
+                <div><span>Upthrust</span><strong id="wyckoffUpthrust">--</strong></div>
+                <div><span>Selling Climax</span><strong id="wyckoffSellingClimax">--</strong></div>
+                <div><span>Buying Climax</span><strong id="wyckoffBuyingClimax">--</strong></div>
+                <div><span>Teste</span><strong id="wyckoffTest">--</strong></div>
+                <div><span>Volume Rel.</span><strong id="wyckoffVolumeRatio">--</strong></div>
+            </div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Volume Institucional</h3>
+                <span class="badge-ai">Flow</span>
+            </div>
+            <div class="smc-grid">
+                <div><span>Sinal Volume</span><strong id="volumeSignal">--</strong></div>
+                <div><span>Lado Dominante</span><strong id="volumeDominantSide">--</strong></div>
+                <div><span>Acima Media</span><strong id="volumeAboveAverage">--</strong></div>
+                <div><span>Anormal</span><strong id="volumeAbnormal">--</strong></div>
+                <div><span>Exaustao</span><strong id="volumeExhaustion">--</strong></div>
+                <div><span>Absorcao</span><strong id="volumeAbsorption">--</strong></div>
+                <div><span>Rompimento</span><strong id="volumeBreakout">--</strong></div>
+                <div><span>Divergencia</span><strong id="volumeDivergence">--</strong></div>
+            </div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Leituras Avancadas</h3>
+                <span class="badge-ai">IA Completa</span>
+            </div>
+            <div class="smc-grid">
+                <div><span>Fase Wyckoff</span><strong id="advancedWyckoffPhase">--</strong></div>
+                <div><span>Manipulacao</span><strong id="advancedManipulation">--</strong></div>
+                <div><span>Onda Atual</span><strong id="advancedCurrentWave">--</strong></div>
+                <div><span>Vies Elliott</span><strong id="advancedWaveBias">--</strong></div>
+                <div><span>Vies Fluxo</span><strong id="advancedFlowBias">--</strong></div>
+                <div><span>Agressao Compra</span><strong id="advancedBuyAggression">--</strong></div>
+                <div><span>Agressao Venda</span><strong id="advancedSellAggression">--</strong></div>
+                <div><span>Absorcao</span><strong id="advancedAbsorption">--</strong></div>
+                <div><span>Score Avancado</span><strong id="advancedScore">--</strong></div>
+            </div>
+            <div class="institutional-explanation" id="advancedExplanation">--</div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Tape de Trades</h3>
+                <span class="badge-ai">WebSocket</span>
+            </div>
+            <div class="trade-tape" id="tradeTape"></div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Watchlist</h3>
+                <button class="btn-run-backtest" id="btnAddWatch">Adicionar</button>
+            </div>
+            <div class="watchlist" id="watchlist"></div>
+        </div>
+
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Alertas</h3>
+                <button class="btn-run-backtest" id="btnCreateAlert">Criar no preco</button>
+            </div>
+            <div class="alerts-list" id="alertsList"></div>
+        </div>
+    </div>
+
+    <div class="backtest-section" id="backtest">
+        <div class="detailed-card">
+            <div class="card-header-detailed">
+                <h3>Backtest EMA 9/21</h3>
+                <button class="btn-run-backtest" id="btnRunBacktest">Executar Backtest</button>
+            </div>
+            <div class="backtest-results" id="backtestResults">
+                <div class="result-item">
+                    <span class="result-label">Total de Trades</span>
+                    <span class="result-value" id="totalTrades">--</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Taxa de Acerto</span>
+                    <span class="result-value" id="winRate">--</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Retorno Total</span>
+                    <span class="result-value" id="totalReturn">--</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Fator de Lucro</span>
+                    <span class="result-value" id="profitFactor">--</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Max Drawdown</span>
+                    <span class="result-value" id="maxDrawdown">--</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Aprendizado</span>
+                    <span class="result-value" id="patternLearning">--</span>
+                </div>
+            </div>
+            <div id="equityCurve" class="equity-curve"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='js/advanced-dashboard.js') }}"></script>
+{% endblock %}
