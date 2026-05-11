@@ -82,11 +82,12 @@ class LiveTradingIA:
             + candle_score * 0.07
         ))))
         direction = self._direction(technical, smc, volume, tape_reading)
-        invalidations = self._invalidations(technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading)
+        invalidations = self._real_invalidations(technical, volume, smc, levels)
+        confirmation_filters = self._confirmation_filters(technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading)
         confirmations = self._confirmations(technical, volume, smc, wyckoff, elliott_wave, tape_reading)
         state = self._state(confluence_score, direction, technical, volume, smc, levels, invalidations)
-        messages = self._messages(state, confluence_score, direction, technical, volume, smc, confirmations, invalidations, wyckoff, elliott_wave, tape_reading)
-        confidence = int(max(10, min(95, confluence_score * 0.72 + len(confirmations) * 3 - len(invalidations) * 4)))
+        messages = self._messages(state, confluence_score, direction, technical, volume, smc, confirmations, confirmation_filters, wyckoff, elliott_wave, tape_reading)
+        confidence = int(max(10, min(95, confluence_score * 0.72 + len(confirmations) * 3 - len(invalidations) * 5 - len(confirmation_filters) * 1.5)))
 
         return {
             "success": True,
@@ -111,6 +112,8 @@ class LiveTradingIA:
             "reason": self._reason(technical, volume, smc, confirmations, invalidations),
             "confirmations": confirmations[:10],
             "invalidations": invalidations[:10],
+            "real_invalidations": invalidations[:10],
+            "confirmation_filters": confirmation_filters[:12],
             "market_status": self._market_status(volume),
             "current_price": round(float(self.current["close"]), 8),
             "previous_close": round(float(self.previous["close"]), 8),
@@ -126,6 +129,7 @@ class LiveTradingIA:
                 "relevant_fvg": smc.get("relevant_fvg"),
                 "liquidity_zone": smc.get("liquidity_zone"),
             },
+            "smc_context": smc,
             "technical": {
                 "signal": technical.get("signal"),
                 "trend": technical.get("trend", {}),
@@ -272,7 +276,7 @@ class LiveTradingIA:
         rr = float(levels.get("risk_reward") or 0)
         breakout = technical.get("details", {}).get("breakout", {}).get("detected")
 
-        if false_breakout or any("invalid" in item.lower() for item in invalidations):
+        if invalidations or false_breakout:
             return "INVALIDATED"
         if rr < 1:
             return "HIGH_RISK"
@@ -304,20 +308,59 @@ class LiveTradingIA:
             items.append(f"Vies institucional {smc.get('institutional_bias')}.")
         return items
 
-    def _invalidations(self, technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading):
+    def _real_invalidations(self, technical, volume, smc, levels):
+        items = []
+        current_close = float(self.current["close"])
+        previous_close = float(self.previous["close"])
+        stop = levels.get("stop_loss")
+        direction = technical.get("signal")
+        if stop is not None:
+            stop = float(stop)
+            if direction == "BUY" and current_close <= stop:
+                items.append("Rompimento do stop estrutural.")
+            if direction == "SELL" and current_close >= stop:
+                items.append("Rompimento do stop estrutural.")
+        if smc.get("false_breakout", {}).get("detected"):
+            items.append("Liquidez capturada no lado oposto.")
+        if smc.get("invalidated"):
+            items.append("Perda da zona operacional Smart Money.")
+        structure = smc.get("structure", {})
+        choch = str(structure.get("choch") or smc.get("choch") or "").lower()
+        if direction == "BUY" and "bear" in choch:
+            items.append("Quebra contraria de estrutura.")
+        if direction == "SELL" and "bull" in choch:
+            items.append("Quebra contraria de estrutura.")
+        candle_body_against_buy = direction == "BUY" and current_close < previous_close and current_close < float(self.current["open"])
+        candle_body_against_sell = direction == "SELL" and current_close > previous_close and current_close > float(self.current["open"])
+        if candle_body_against_buy or candle_body_against_sell:
+            items.append("Candle fechando contra o setup.")
+        return list(dict.fromkeys(items))
+
+    def _confirmation_filters(self, technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading):
         items = []
         items.extend(technical.get("invalidations", [])[:4])
         items.extend(smc.get("invalidations", [])[:3])
         items.extend(wyckoff.get("invalidations", [])[:2])
         items.extend(elliott_wave.get("invalidations", [])[:2])
         items.extend(tape_reading.get("invalidations", [])[:2])
+        lateral = technical.get("details", {}).get("lateralization", {})
+        if lateral.get("detected"):
+            items.append("Lateralizacao detectada; aguardar rompimento limpo.")
+        if not elliott_wave.get("impulse_structure", {}).get("detected") and not elliott_wave.get("corrective_structure", {}).get("detected"):
+            items.append("Elliott inconclusivo.")
+        if tape_reading.get("order_flow_bias") in [None, "BALANCED_FLOW"]:
+            items.append("Fluxo fraco ou equilibrado.")
+        if not technical.get("details", {}).get("candle_strength", {}).get("strong"):
+            items.append("Aguardando candle gatilho.")
+        if smc.get("inducement", {}).get("detected"):
+            items.append("Induzimento ainda ativo.")
         if smc.get("false_breakout", {}).get("detected"):
             items.append("Possivel falso rompimento. Nao entrar ainda.")
         if float(volume.get("metrics", {}).get("volume_ratio", 1)) < 0.72:
             items.append("Volume ainda insuficiente para confirmar entrada.")
         if float(levels.get("risk_reward") or 0) < 1:
-            items.append("Risco/retorno abaixo de 1:1.")
-        return items
+            items.append("Risco/retorno abaixo do minimo operacional.")
+        return list(dict.fromkeys(items))
 
     def _messages(self, state, score, direction, technical, volume, smc, confirmations, invalidations, wyckoff, elliott_wave, tape_reading):
         messages = ["Analisando estrutura do mercado..."]

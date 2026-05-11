@@ -13,25 +13,39 @@ from ia.analysis import (
     create_heatmap_data,
     generate_ai_reasoning,
 )
+from ia.ai_narrative_engine import AINarrativeEngine
 from ia.binance_client import TimedCache
 from ia.confluence_engine import DISCLAIMER, build_confluence_analysis
+from ia.context_engine import ContextEngine
 from ia.data_generator import generate_realistic_data
+from ia.execution_engine import ExecutionEngine
 from ia.final_score import calculate_final_score
 from ia.institutional import OperationalValidator, PatternLearner, ProfessionalBacktest
+from ia.flow_engine import build_flow_context
+from ia.institutional_confluence_engine import build_institutional_confluence
+from ia.institutional_decision_engine import build_institutional_decision
+from ia.institutional_signal_engine import build_institutional_signal
 from ia.live_trading import build_live_status
 from ia.live_signals import LiveSignalManager
+from ia.market_data_service import build_market_data_snapshot
 from ia.market_data_router import MarketDataRouter
+from ia.multi_timeframe_engine import build_institutional_mtf_context
+from ia.narrative_engine import build_operational_narrative
+from ia.operational_engine import build_operational_panel
 from ia.operational_signal import build_operational_signal
 from ia.operacional_live_engine import build_operacional_live_status
 from ia.operacional_reader import build_candle_flow, build_operacional_context, build_operacional_reading
-from ia.operacional_replay import OperacionalReplayEngine
-from ia.replay_engine import ReplayEngine
+from ia.overlay_engine import OverlayEngine
+from ia.risk_engine import build_risk_plan
 from ia.smart_money import analyze_smart_money
+from ia.smc_engine import build_smc_context
 from ia.technical_reader import read_technical
 from ia.elliott_wave import read_elliott_wave
 from ia.tape_reading import read_tape
 from ia.volume_reader import read_volume
+from ia.websocket_manager import build_binance_kline_stream
 from ia.wyckoff_reader import read_wyckoff_advanced
+from ia.wyckoff_engine import build_wyckoff_context
 from ia.user_store import (
     add_watchlist,
     authenticate,
@@ -60,8 +74,11 @@ analysis_response_cache = TimedCache(ttl_seconds=10)
 analysis_core_cache = TimedCache(ttl_seconds=10)
 live_status_cache = TimedCache(ttl_seconds=3)
 live_signal_manager = LiveSignalManager()
-replay_engine = ReplayEngine()
-operacional_replay_engine = OperacionalReplayEngine()
+live_context_engine = ContextEngine()
+analysis_context_engine = ContextEngine()
+live_narrative_engine = AINarrativeEngine()
+live_overlay_engine = OverlayEngine()
+execution_engine = ExecutionEngine()
 operacional_live_signals = []
 
 SUPPORTED_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
@@ -338,7 +355,7 @@ def build_advanced_confluence(score, technical, smc, volume, mtf_confluence, wyc
 
 def build_signal_cards_decision(signal, final_score, confluence_ai, operational_signal, operational_state,
                                 advanced_confluence, smc, volume, mtf_confluence, wyckoff,
-                                elliott_wave, tape_reading, levels):
+                                elliott_wave, tape_reading, levels, institutional_decision=None):
     def upper(value):
         return str(value or "").upper()
 
@@ -348,8 +365,11 @@ def build_signal_cards_decision(signal, final_score, confluence_ai, operational_
         except Exception:
             return default
 
-    score = as_number(advanced_confluence.get("score"), as_number(operational_signal.get("score"), 0))
+    institutional_decision = institutional_decision or {}
+    forces = institutional_decision.get("forces", {})
+    score = as_number(institutional_decision.get("score"), as_number(advanced_confluence.get("score"), as_number(operational_signal.get("score"), 0)))
     confidence = max(
+        as_number(institutional_decision.get("confidence"), 0),
         score,
         as_number(operational_signal.get("confidence"), 0),
         as_number(confluence_ai.get("confidence"), 0),
@@ -416,6 +436,8 @@ def build_signal_cards_decision(signal, final_score, confluence_ai, operational_
         or smc.get("false_breakout", {}).get("detected")
         or (rr > 0 and rr < 1)
     )
+    if institutional_decision.get("invalidations"):
+        invalidated = True
     weak_or_wait = (
         operational_state.get("state") in ["loading", "waiting_confirmation"]
         or volume.get("signal") == "NEUTRAL_VOLUME"
@@ -423,10 +445,27 @@ def build_signal_cards_decision(signal, final_score, confluence_ai, operational_
         or waiting > 0
     )
     conflict = bullish > 0 and bearish > 0 and abs(bullish - bearish) <= 2
-    dominant_key = "buy" if bullish > bearish else "sell" if bearish > bullish else "neutral"
+    buy_force = as_number(forces.get("buy"), min(100, bullish * 8))
+    sell_force = as_number(forces.get("sell"), min(100, bearish * 8))
+    wait_force = as_number(forces.get("wait"), min(100, waiting * 12 + (35 if weak_or_wait else 0)))
+    neutral_force = as_number(forces.get("neutral"), max(0, 55 - abs(buy_force - sell_force) * 0.5))
+    dominant_key = "buy" if buy_force > sell_force else "sell" if sell_force > buy_force else "neutral"
     dominant_votes = max(bullish, bearish)
 
-    if invalidated:
+    institutional_signal = institutional_decision.get("signal")
+    if institutional_signal == "COMPRA" and not invalidated:
+        active = "buy"
+        reason = institutional_decision.get("narrative") or "Compra liberada pela confluencia institucional."
+    elif institutional_signal == "VENDA" and not invalidated:
+        active = "sell"
+        reason = institutional_decision.get("narrative") or "Venda liberada pela confluencia institucional."
+    elif institutional_signal == "AGUARDAR":
+        active = "wait"
+        reason = institutional_decision.get("narrative") or "IA aguarda timing operacional."
+    elif institutional_signal == "NEUTRO":
+        active = "neutral"
+        reason = institutional_decision.get("narrative") or "Mercado sem direcao institucional."
+    elif invalidated:
         active = "wait"
         reason = "Cenario exige aguardar por invalidacao, falso rompimento ou risco/retorno ruim."
     elif score < 32 and dominant_votes < 4:
@@ -456,13 +495,22 @@ def build_signal_cards_decision(signal, final_score, confluence_ai, operational_
         "wait": "AGUARDAR CONFIRMACAO",
     }
     cards = {}
+    force_map = {
+        "buy": buy_force,
+        "sell": sell_force,
+        "neutral": neutral_force,
+        "wait": wait_force,
+    }
     for key, label in labels.items():
+        card_force = round(max(0, min(100, force_map.get(key, 0))), 1)
         cards[key] = {
             "label": label,
             "active": key == active,
-            "confidence": round(confidence, 1) if key == active else 0,
-            "score": round(score, 1) if key == active else 0,
+            "confidence": round(confidence, 1) if key == active else card_force,
+            "score": round(score, 1) if key == active else card_force,
+            "force": card_force,
             "intensity": intensity if key == active else "inativa",
+            "text": f"{card_force:.0f}% FORCA" if key in ["buy", "sell"] else f"{card_force:.0f}%",
         }
     return {
         "active": active,
@@ -471,6 +519,7 @@ def build_signal_cards_decision(signal, final_score, confluence_ai, operational_
         "score": round(score, 1),
         "intensity": intensity,
         "votes": {"bullish": bullish, "bearish": bearish, "waiting": waiting},
+        "forces": {"buy": round(buy_force, 1), "sell": round(sell_force, 1), "neutral": round(neutral_force, 1), "wait": round(wait_force, 1)},
         "reason": reason if not reasons else f"{reason} {reasons[0]}",
         "cards": cards,
     }
@@ -826,12 +875,6 @@ def live():
     return render_template("live.html")
 
 
-@app.route("/replay")
-@login_required
-def replay():
-    return render_template("replay.html")
-
-
 @app.route("/operacional")
 @login_required
 def operacional():
@@ -895,6 +938,7 @@ def get_candles(symbol, timeframe):
             "market_status": market_meta.get("market_status", "unknown"),
             "market_message": market_meta.get("message"),
             "streaming": market_meta.get("streaming", False),
+            "fallback": market_meta.get("fallback", False),
             "timeframe": timeframe,
             "candles": payload.get("candles", []),
             "volumes": payload.get("volumes", []),
@@ -905,6 +949,16 @@ def get_candles(symbol, timeframe):
                 "quoteVolume": float(ticker.get("quoteVolume", 0)),
                 "volume": float(ticker.get("volume", 0)),
                 "count": int(ticker.get("count", 0)),
+                "bid": ticker.get("bid"),
+                "ask": ticker.get("ask"),
+                "spread": ticker.get("spread"),
+                "spread_points": ticker.get("spread_points"),
+            },
+            "quote": {
+                "bid": market_meta.get("bid") or ticker.get("bid"),
+                "ask": market_meta.get("ask") or ticker.get("ask"),
+                "spread": market_meta.get("spread") or ticker.get("spread"),
+                "provider_symbol": market_meta.get("provider_symbol") or ticker.get("provider_symbol"),
             },
         }
         return jsonify(sanitize_json(response))
@@ -980,6 +1034,14 @@ def get_analysis(symbol, timeframe):
                 "counts": {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0},
             }
         try:
+            smc = build_smc_context(df, signal.get("signal_type", "neutro"))
+        except Exception:
+            pass
+        flow_context = build_flow_context(volume_analysis, tape_reading)
+        wyckoff_context = build_wyckoff_context(df, volume_analysis, tape_reading)
+        wyckoff = {**wyckoff, **wyckoff_context}
+        institutional_mtf = build_institutional_mtf_context(mtf_analysis, mtf_confluence)
+        try:
             signal, validation = apply_mtf_gate(signal, score, validation, mtf_confluence)
         except Exception:
             signal = default_signal(df)
@@ -1046,6 +1108,64 @@ def get_analysis(symbol, timeframe):
             tape_reading=tape_reading,
             levels=levels,
         )
+        institutional_decision = build_institutional_decision(
+            technical=technical_reading,
+            smc=smc,
+            volume=volume_analysis,
+            wyckoff=wyckoff,
+            elliott_wave=elliott_wave,
+            tape_reading=tape_reading,
+            mtf_confluence=institutional_mtf,
+            levels=levels,
+            current_price=current_price,
+        )
+        risk_plan = build_risk_plan(
+            institutional_decision.get("direction", "NEUTRAL"),
+            current_price,
+            levels,
+            smc,
+            technical_reading.get("details", {}).get("atr"),
+        )
+        institutional_confluence = build_institutional_confluence(
+            smc=smc,
+            wyckoff=wyckoff,
+            elliott=elliott_wave,
+            flow=flow_context,
+            mtf=institutional_mtf,
+            technical=technical_reading,
+            risk=risk_plan,
+        )
+        institutional_signal = build_institutional_signal(
+            institutional_confluence,
+            institutional_decision.get("timing", {}),
+            risk_plan,
+        )
+        institutional_narrative = build_operational_narrative(
+            institutional_signal,
+            smc,
+            flow_context,
+            institutional_mtf,
+            risk_plan,
+        )
+        institutional_decision.update({
+            "confluence": institutional_confluence,
+            "signal_payload": institutional_signal,
+            "risk_plan": {**institutional_decision.get("risk_plan", {}), **risk_plan},
+            "flow": flow_context,
+            "multi_timeframe": institutional_mtf,
+            "narrative_payload": institutional_narrative,
+        })
+        persistent_context = analysis_context_engine.update(df, symbol, timeframe, {
+            "technical": technical_reading,
+            "probable_direction": institutional_decision.get("direction", "NEUTRAL"),
+            "message": institutional_decision.get("narrative"),
+            "stop_loss": institutional_decision.get("risk_plan", {}).get("invalidation"),
+            "volume": volume_analysis,
+            "tape_reading": tape_reading,
+            "smc_context": smc,
+            "wyckoff": wyckoff,
+            "institutional_mtf": institutional_mtf,
+        })
         signal_cards = build_signal_cards_decision(
             signal=signal,
             final_score=final_score,
@@ -1060,6 +1180,7 @@ def get_analysis(symbol, timeframe):
             elliott_wave=elliott_wave,
             tape_reading=tape_reading,
             levels=levels,
+            institutional_decision=institutional_decision,
         )
 
         response = {
@@ -1079,10 +1200,30 @@ def get_analysis(symbol, timeframe):
             "patterns": patterns,
             "smc": smc,
             "volume_analysis": volume_analysis,
+            "flow_context": flow_context,
             "wyckoff": wyckoff,
             "elliott_wave": elliott_wave,
             "tape_reading": tape_reading,
             "advanced_confluence": advanced_confluence,
+            "institutional_confluence": institutional_confluence,
+            "institutional_decision": institutional_decision,
+            "institutional_signal": institutional_signal,
+            "institutional_risk": risk_plan,
+            "institutional_narrative": institutional_narrative,
+            "institutional_mtf": institutional_mtf,
+            "institutional_ai": {
+                "context": persistent_context,
+                "smc": smc,
+                "wyckoff": wyckoff,
+                "elliott": elliott_wave,
+                "flow": flow_context,
+                "multi_timeframe": institutional_mtf,
+                "confluence": institutional_confluence,
+                "signal": institutional_signal,
+                "risk": risk_plan,
+                "narrative": institutional_narrative,
+            },
+            "context_engine": persistent_context,
             "signal_cards": signal_cards,
             "institutional_context": institutional_payload,
             "smc_score": institutional_payload["smc_score"],
@@ -1264,27 +1405,86 @@ def api_live_status(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
     cache_key = f"live:{symbol}:{timeframe}"
-    cached = live_status_cache.get(cache_key)
+    reason = request.args.get("reason", "heartbeat")
+    force_refresh = reason in {"initial", "change", "new_candle", "support_resistance_break", "strong_change", "visibility_resume"}
+    cached = None if force_refresh else live_status_cache.get(cache_key)
     if cached is not None:
         return jsonify(sanitize_json(cached))
     try:
         df = load_market_data(symbol, timeframe, 260)
         ticker = get_ticker(symbol)
         status = build_live_status(df, symbol, timeframe, ticker)
+        market_meta = market.last_meta(symbol)
+        try:
+            live_smc = build_smc_context(df, (status.get("technical") or {}).get("signal") or status.get("probable_direction", "NEUTRAL"))
+        except Exception:
+            live_smc = status.get("smc_context") or default_smc()
+        live_flow = build_flow_context(status.get("volume", {}), status.get("tape_reading", {}))
+        live_wyckoff = build_wyckoff_context(df, status.get("volume", {}), status.get("tape_reading", {}))
+        live_direction = {"BUY": "BULLISH", "SELL": "BEARISH"}.get(status.get("probable_direction"), "NEUTRAL")
+        live_mtf = build_institutional_mtf_context({}, {"dominant_direction": live_direction, "average_strength": status.get("trend_strength", 0), "confirmed_timeframes": 0})
+        live_risk = build_risk_plan(status.get("probable_direction", "NEUTRAL"), status.get("current_price", 0), {
+            "entrada": status.get("entry_aggressive") or status.get("entry_conservative") or status.get("current_price"),
+            "stop_loss": status.get("stop_loss"),
+            "alvo_1": status.get("take_profit"),
+            "alvo_2": status.get("take_profit_2"),
+            "risco_retorno": status.get("risk_reward"),
+        }, live_smc)
+        live_confluence = build_institutional_confluence(
+            smc=live_smc,
+            wyckoff=live_wyckoff,
+            elliott=status.get("elliott_wave", {}),
+            flow=live_flow,
+            mtf=live_mtf,
+            technical=status.get("technical", {}),
+            risk=live_risk,
+        )
+        live_signal = build_institutional_signal(live_confluence, {"confirmed": status.get("state") in ["BUY_CONFIRMED", "SELL_CONFIRMED", "AGGRESSIVE_ENTRY", "CONSERVATIVE_ENTRY"]}, live_risk)
+        live_narrative = build_operational_narrative(live_signal, live_smc, live_flow, live_mtf, live_risk)
+        status["smc_context"] = live_smc
+        status["wyckoff"] = {**status.get("wyckoff", {}), **live_wyckoff}
+        status["institutional_mtf"] = live_mtf
+        context = live_context_engine.update(df, symbol, timeframe, status)
+        operational_panel = build_operational_panel(status, context)
+        smart_overlays = live_overlay_engine.build(context, status)
+        narrative_feed = live_narrative_engine.update(symbol, timeframe, context, status)
         mtf_confluence = {}
         try:
             _, mtf_confluence = build_multi_timeframe(symbol)
         except Exception:
             mtf_confluence = {"strong_signal_allowed": True}
         status.update({
-            "market": market.last_meta(symbol).get("market"),
-            "market_label": market.last_meta(symbol).get("market_label"),
-            "source": market.last_meta(symbol).get("source"),
-            "market_data_status": market.last_meta(symbol).get("market_status"),
-            "market_message": market.last_meta(symbol).get("message"),
-            "streaming": market.last_meta(symbol).get("streaming", False),
+            "market": market_meta.get("market"),
+            "market_label": market_meta.get("market_label"),
+            "source": market_meta.get("source"),
+            "market_data_status": market_meta.get("market_status"),
+            "market_message": market_meta.get("message"),
+            "streaming": market_meta.get("streaming", False),
+            "market_data": build_market_data_snapshot(market_meta, ticker),
+            "context": context,
+            "operational_panel": operational_panel,
+            "smart_overlays": smart_overlays,
+            "narrative_feed": narrative_feed,
+            "institutional_ai": {
+                "context": context,
+                "smc": live_smc,
+                "wyckoff": live_wyckoff,
+                "flow": live_flow,
+                "multi_timeframe": live_mtf,
+                "confluence": live_confluence,
+                "signal": live_signal,
+                "risk": live_risk,
+                "narrative": live_narrative,
+            },
+            "websocket": build_binance_kline_stream(symbol, timeframe) if market_meta.get("streaming", False) else None,
         })
-        status["signal_event"] = live_signal_manager.update_from_live_status(status, market.last_meta(symbol), mtf_confluence)
+        status["signal_event"] = live_signal_manager.update_from_live_status(status, market_meta, mtf_confluence)
+        status["live_signals"] = {
+            "active": live_signal_manager.list_active(),
+            "history": live_signal_manager.list_history(40),
+            "stats": live_signal_manager.stats(),
+            "source": "live_status",
+        }
         live_status_cache.set(cache_key, status)
         return jsonify(sanitize_json(status))
     except Exception as error:
@@ -1309,10 +1509,60 @@ def api_live_status(symbol, timeframe):
             "take_profit": None,
             "reason": "Leitura live indisponivel no momento.",
             "invalidations": ["IA live indisponivel temporariamente."],
+            "real_invalidations": [],
+            "confirmation_filters": ["IA live indisponivel temporariamente."],
             "alerts": [],
             "disclaimer": "Analise educativa. Nao e recomendacao financeira. Toda operacao envolve risco.",
         }
         return jsonify(sanitize_json(fallback)), 200
+
+
+@app.route("/api/execution/status")
+@login_required
+def api_execution_status():
+    return jsonify(sanitize_json({"success": True, "status": execution_engine.status()}))
+
+
+@app.route("/api/execution/config", methods=["POST"])
+@login_required
+def api_execution_config():
+    payload = request.get_json(silent=True) or {}
+    status = execution_engine.configure(enabled=payload.get("enabled"), mode=payload.get("mode"))
+    return jsonify(sanitize_json({"success": True, "status": status}))
+
+
+@app.route("/api/execution/kill-switch", methods=["POST"])
+@login_required
+def api_execution_kill_switch():
+    return jsonify(sanitize_json({"success": True, "status": execution_engine.kill()}))
+
+
+@app.route("/api/execution/evaluate", methods=["POST"])
+@login_required
+def api_execution_evaluate():
+    payload = request.get_json(silent=True) or {}
+    decision = execution_engine.evaluate(payload.get("live_status") or {})
+    return jsonify(sanitize_json({"success": True, "decision": decision, "status": execution_engine.status()}))
+
+
+@app.route("/api/execution/paper-order", methods=["POST"])
+@login_required
+def api_execution_paper_order():
+    payload = request.get_json(silent=True) or {}
+    return jsonify(sanitize_json(execution_engine.execute_paper(payload.get("live_status") or {})))
+
+
+@app.route("/api/execution/confirm", methods=["POST"])
+@login_required
+def api_execution_confirm():
+    payload = request.get_json(silent=True) or {}
+    return jsonify(sanitize_json(execution_engine.confirm(payload.get("live_status") or {}, real=bool(payload.get("real")))))
+
+
+@app.route("/api/execution/history")
+@login_required
+def api_execution_history():
+    return jsonify(sanitize_json({"success": True, "orders": execution_engine.history(), "status": execution_engine.status()}))
 
 
 @app.route("/api/live/signals")
@@ -1374,172 +1624,6 @@ def api_live_signals_history():
         "history": live_signal_manager.list_history(limit),
         "stats": live_signal_manager.stats(),
     }))
-
-
-@app.route("/api/replay/start", methods=["POST"])
-@login_required
-def api_replay_start():
-    payload = request.get_json(silent=True) or {}
-    symbol = normalize_symbol(payload.get("symbol", DEFAULT_SYMBOL))
-    timeframe = normalize_timeframe(payload.get("timeframe", "15m"))
-    speed = int(payload.get("speed", 1))
-    try:
-        df = load_market_data(symbol, timeframe, 1000)
-        meta = market.last_meta(symbol)
-        session = replay_engine.create(
-            candles=df,
-            symbol=symbol,
-            market=meta.get("market"),
-            timeframe=timeframe,
-            start_date=payload.get("start_date"),
-            end_date=payload.get("end_date"),
-            speed=speed,
-        )
-        return jsonify(sanitize_json(session.start()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error), "message": "Nao foi possivel iniciar o replay para o periodo escolhido."}), 200
-
-
-def start_replay_session():
-    payload = request.get_json(silent=True) or {}
-    symbol = normalize_symbol(payload.get("symbol", DEFAULT_SYMBOL))
-    timeframe = normalize_timeframe(payload.get("timeframe", "15m"))
-    speed = int(payload.get("speed", 1))
-    try:
-        df = load_market_data(symbol, timeframe, 1000)
-        meta = market.last_meta(symbol)
-        session = replay_engine.create(
-            candles=df,
-            symbol=symbol,
-            market=meta.get("market"),
-            timeframe=timeframe,
-            start_date=payload.get("start_date"),
-            end_date=payload.get("end_date"),
-            speed=speed,
-        )
-        return jsonify(sanitize_json(session.start()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error), "message": "Nao foi possivel iniciar o replay para o periodo escolhido."}), 200
-
-
-@app.route("/api/replay/step", methods=["POST"])
-@login_required
-def api_replay_step():
-    payload = request.get_json(silent=True) or {}
-    try:
-        session = replay_engine.get(payload.get("session_id"))
-        return jsonify(sanitize_json(session.step(int(payload.get("direction", 1)))))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
-
-
-@app.route("/api/replay/pause", methods=["POST"])
-@login_required
-def api_replay_pause():
-    payload = request.get_json(silent=True) or {}
-    try:
-        session = replay_engine.get(payload.get("session_id"))
-        return jsonify(sanitize_json(session.pause()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
-
-
-@app.route("/api/replay/reset", methods=["POST"])
-@login_required
-def api_replay_reset():
-    payload = request.get_json(silent=True) or {}
-    try:
-        session = replay_engine.get(payload.get("session_id"))
-        return jsonify(sanitize_json(session.reset()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
-
-
-@app.route("/api/replay/status")
-@login_required
-def api_replay_status():
-    try:
-        session = replay_engine.get(request.args.get("session_id"))
-        return jsonify(sanitize_json(session.status()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
-
-
-@app.route("/api/replay/results")
-@login_required
-def api_replay_results():
-    try:
-        session = replay_engine.get(request.args.get("session_id"))
-        return jsonify(sanitize_json(session.results()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
-
-
-@app.route("/api/replay/operacional/start", methods=["POST"])
-@login_required
-def api_replay_operacional_start():
-    payload = request.get_json(silent=True) or {}
-    symbol = normalize_symbol(payload.get("symbol", DEFAULT_SYMBOL))
-    timeframe = normalize_timeframe(payload.get("timeframe", "15m"))
-    speed = int(payload.get("speed", 1))
-    try:
-        df = load_market_data(symbol, timeframe, 1000)
-        meta = market.last_meta(symbol)
-        session = operacional_replay_engine.create(
-            candles=df,
-            symbol=symbol,
-            market=meta.get("market"),
-            timeframe=timeframe,
-            start_date=payload.get("start_date"),
-            end_date=payload.get("end_date"),
-            speed=speed,
-        )
-        return jsonify(sanitize_json(session.start()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error), "message": "Nao foi possivel iniciar o replay operacional para o periodo escolhido."}), 200
-
-
-@app.route("/api/replay/operacional/step", methods=["POST"])
-@login_required
-def api_replay_operacional_step():
-    payload = request.get_json(silent=True) or {}
-    try:
-        session = operacional_replay_engine.get(payload.get("session_id"))
-        return jsonify(sanitize_json(session.step(int(payload.get("direction", 1)))))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
-
-
-@app.route("/api/replay/operacional/pause", methods=["POST"])
-@login_required
-def api_replay_operacional_pause():
-    payload = request.get_json(silent=True) or {}
-    try:
-        session = operacional_replay_engine.get(payload.get("session_id"))
-        return jsonify(sanitize_json(session.pause()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
-
-
-@app.route("/api/replay/operacional/reset", methods=["POST"])
-@login_required
-def api_replay_operacional_reset():
-    payload = request.get_json(silent=True) or {}
-    try:
-        session = operacional_replay_engine.get(payload.get("session_id"))
-        return jsonify(sanitize_json(session.reset()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
-
-
-@app.route("/api/replay/operacional/status")
-@login_required
-def api_replay_operacional_status():
-    try:
-        session = operacional_replay_engine.get(request.args.get("session_id"))
-        return jsonify(sanitize_json(session.status()))
-    except Exception as error:
-        return jsonify({"success": False, "error": str(error)}), 200
 
 
 @app.route("/api/operacional/analysis/<symbol>/<timeframe>")
@@ -1882,6 +1966,25 @@ def get_assets():
         "markets": market.get_markets(),
         "assets": market.get_assets(market_key),
     })
+
+
+@app.route("/api/market/tick/<symbol>")
+def api_market_tick(symbol):
+    requested_symbol = normalize_symbol(symbol)
+    try:
+        quote = market.get_realtime_quote(requested_symbol)
+        return jsonify(sanitize_json({"success": True, **quote}))
+    except Exception as error:
+        meta = market.last_meta(requested_symbol)
+        return jsonify(sanitize_json({
+            "success": False,
+            "symbol": requested_symbol,
+            "source": meta.get("source"),
+            "market": meta.get("market"),
+            "market_status": meta.get("market_status", "no_data"),
+            "message": meta.get("message") or "Tick indisponivel.",
+            "error": str(error),
+        })), 200
 
 
 @app.route("/api/timeframes")

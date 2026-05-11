@@ -127,7 +127,7 @@ def generate_realistic_data(symbol='PETR4', days=90, interval='1h'):
     
     # Movimento browniano geométrico
     returns = np.random.normal(trend, volatility, n)
-    close_prices = base_price * np.exp(np.cumsum(returns))
+    close_prices = pd.Series(base_price * np.exp(np.cumsum(returns)), index=dates)
     
     # OHLC realista
     open_prices = close_prices.shift(1).fillna(close_prices.iloc[0])

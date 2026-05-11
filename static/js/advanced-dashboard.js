@@ -3,6 +3,9 @@ class AdvancedDashboard {
         this.currentAsset = 'BTCUSDT';
         this.currentMarket = 'crypto';
         this.currentTimeframe = '1h';
+        this.chartEngine = null;
+        this.marketDataEngine = new window.MarketDataEngine({ provider: 'bybit', fallbackProvider: 'binance', ttl: 8000 });
+        this.websocketEngine = new window.WebSocketEngine({ provider: 'bybit', fallbackProvider: 'binance' });
         this.chart = null;
         this.candleSeries = null;
         this.volumeSeries = null;
@@ -95,32 +98,8 @@ class AdvancedDashboard {
     }
 
     setupChart() {
-        const container = document.getElementById('chart-container');
-        if (!container) return;
-        container.innerHTML = '';
-
-        this.chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: Math.max(container.clientHeight, 520),
-            layout: {
-                textColor: '#F8FAFC',
-                background: { type: 'solid', color: '#05070D' },
-                fontFamily: 'Inter, Arial, sans-serif',
-            },
-            grid: {
-                horzLines: { color: 'rgba(56, 189, 248, 0.08)' },
-                vertLines: { color: 'rgba(255, 255, 255, 0.035)' },
-            },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            rightPriceScale: {
-                borderColor: 'rgba(56, 189, 248, 0.18)',
-                scaleMargins: { top: 0.08, bottom: 0.24 },
-            },
-            timeScale: {
-                borderColor: 'rgba(56, 189, 248, 0.18)',
-                timeVisible: true,
-                secondsVisible: false,
-            },
+        this.chartEngine = new window.InstitutionalChartEngine('chart-container', {
+            minHeight: 520,
             watermark: {
                 visible: true,
                 text: 'BINANCE REAL-TIME',
@@ -129,41 +108,24 @@ class AdvancedDashboard {
                 horzAlign: 'right',
                 vertAlign: 'bottom',
             },
-        });
-
-        this.candleSeries = this.chart.addCandlestickSeries({
-            upColor: '#22C55E',
-            downColor: '#EF4444',
-            borderUpColor: '#22C55E',
-            borderDownColor: '#EF4444',
-            wickUpColor: '#22C55E',
-            wickDownColor: '#EF4444',
-        });
-
-        this.volumeSeries = this.chart.addHistogramSeries({
-            priceFormat: { type: 'volume' },
-            priceScaleId: '',
-            scaleMargins: { top: 0.82, bottom: 0 },
-        });
-
-        this.overlaySeries = {
-            ema9: this.chart.addLineSeries({ color: '#FACC15', lineWidth: 2, title: 'EMA 9' }),
-            ema21: this.chart.addLineSeries({ color: '#38BDF8', lineWidth: 2, title: 'EMA 21' }),
-            ema200: this.chart.addLineSeries({ color: '#F59E0B', lineWidth: 2, title: 'EMA 200' }),
-            vwap: this.chart.addLineSeries({ color: '#22D3EE', lineWidth: 2, title: 'VWAP' }),
-            bollinger_upper: this.chart.addLineSeries({ color: 'rgba(148, 163, 184, 0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted }),
-            bollinger_middle: this.chart.addLineSeries({ color: 'rgba(148, 163, 184, 0.45)', lineWidth: 1 }),
-            bollinger_lower: this.chart.addLineSeries({ color: 'rgba(148, 163, 184, 0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted }),
-        };
+            indicators: {
+                ema9: { color: '#FACC15', lineWidth: 2, title: 'EMA 9' },
+                ema21: { color: '#38BDF8', lineWidth: 2, title: 'EMA 21' },
+                ema200: { color: '#F59E0B', lineWidth: 2, title: 'EMA 200' },
+                vwap: { color: '#22D3EE', lineWidth: 2, title: 'VWAP' },
+                bollinger_upper: { color: 'rgba(148, 163, 184, 0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted },
+                bollinger_middle: { color: 'rgba(148, 163, 184, 0.45)', lineWidth: 1 },
+                bollinger_lower: { color: 'rgba(148, 163, 184, 0.8)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted },
+            },
+        }).init();
+        this.chart = this.chartEngine?.chart;
+        this.candleSeries = this.chartEngine?.candleSeries;
+        this.volumeSeries = this.chartEngine?.volumeSeries;
+        this.overlaySeries = this.chartEngine?.indicatorSeries || {};
     }
 
     resizeChart() {
-        const container = document.getElementById('chart-container');
-        if (!container || !this.chart) return;
-        this.chart.applyOptions({
-            width: container.clientWidth,
-            height: Math.max(container.clientHeight, 520),
-        });
+        this.chartEngine?.resize();
     }
 
     startRealtime() {
@@ -242,24 +204,11 @@ class AdvancedDashboard {
     }
 
     async fetchCandles(symbol, timeframe, limit, signal) {
-        const key = `candles:${symbol}:${timeframe}:${limit}`;
-        const cached = this.getLocalCache(this.candleMemoryCache, key);
-        if (cached) return cached;
-        const response = await fetch(`/api/candles/${symbol}/${timeframe}?limit=${limit}`, { signal });
-        const data = await response.json();
-        if (data?.success) this.setLocalCache(this.candleMemoryCache, key, data);
-        return data;
+        return this.marketDataEngine.candles(symbol, timeframe, limit, signal);
     }
 
     async fetchAnalysis(symbol, timeframe, signal, force = false) {
-        const key = `analysis:${symbol}:${timeframe}`;
-        const cached = force ? null : this.getLocalCache(this.analysisMemoryCache, key);
-        if (cached) return cached;
-        const suffix = force ? `?refresh=${Date.now()}` : '';
-        const response = await fetch(`/api/analysis/${symbol}/${timeframe}${suffix}`, { signal });
-        const data = await response.json();
-        if (data?.success) this.setLocalCache(this.analysisMemoryCache, key, data);
-        return data;
+        return this.marketDataEngine.analysis(symbol, timeframe, signal, force);
     }
 
     getLocalCache(cache, key) {
@@ -295,19 +244,64 @@ class AdvancedDashboard {
             this.setOperationalState({ state: 'neutral', message: 'Sem candles validos para renderizar.' });
             return;
         }
-        this.candleSeries.setData(candleData);
-        this.volumeSeries.setData(volumeData);
-        Object.entries(candles.overlays || {}).forEach(([key, values]) => {
-            this.overlaySeries[key]?.setData(Array.isArray(values) ? values.filter(Boolean) : []);
-        });
+        this.chartEngine?.setData(candleData, volumeData, fit);
+        this.chartEngine?.setIndicators(candles.overlays || {});
 
-        this.clearPriceLines();
-        if (analysis?.levels) this.addTradePriceLines(analysis.levels);
-        if (analysis) this.addInstitutionalPriceLines(analysis);
+        this.applyInstitutionalOverlays(analysis);
         const baseMarkers = Array.isArray(analysis?.markers) ? analysis.markers : [];
         const aiMarkers = window.VisualAIOverlays?.buildCompleteMarkers(candleData, analysis) || [];
-        window.VisualAIOverlays?.set(this.candleSeries, baseMarkers, aiMarkers) || this.candleSeries.setMarkers(baseMarkers);
-        if (fit) this.chart.timeScale().fitContent();
+        this.chartEngine?.applyMarkers([...baseMarkers, ...aiMarkers]);
+    }
+
+    applyInstitutionalOverlays(analysis) {
+        if (!analysis) {
+            this.chartEngine?.applyLevels([]);
+            this.chartEngine?.applyZones([]);
+            return;
+        }
+
+        const institutionalAI = analysis.institutional_ai || {};
+        const institutionalDecision = analysis.institutional_decision || {};
+        const institutionalRisk = institutionalDecision.risk_plan || institutionalAI.risk || analysis.institutional_risk || {};
+        const operationalSignal = analysis.operational_signal || institutionalAI.signal || {};
+        const levels = analysis.levels || {};
+
+        const overlayLevels = [
+            { label: 'Entrada', price: institutionalRisk.entry ?? operationalSignal.entry ?? operationalSignal.entry_aggressive ?? levels.entrada, color: '#38BDF8' },
+            { label: 'Entrada Cons.', price: operationalSignal.entry_conservative, color: '#60A5FA', lineWidth: 1 },
+            { label: 'Stop', price: institutionalRisk.stop_loss ?? institutionalRisk.stop ?? operationalSignal.stop_loss ?? levels.stop_loss, color: '#EF4444' },
+            { label: 'Take 1', price: institutionalRisk.take_profit ?? operationalSignal.take_profit_1 ?? levels.alvo_1, color: '#22C55E' },
+            { label: 'Take Parcial', price: institutionalRisk.take_partial ?? institutionalRisk.partial_take ?? operationalSignal.partial_take, color: '#F59E0B', lineWidth: 1 },
+            { label: 'Invalidacao', price: institutionalRisk.invalidation ?? operationalSignal.invalidation, color: '#F97316' },
+        ].filter((level) => Number.isFinite(Number(level.price)));
+
+        const smc = institutionalAI.smc || analysis.smc || {};
+        const context = institutionalAI.context || analysis.institutional_context || {};
+        const zones = [
+            this.normalizeOverlayZone(context.relevant_order_block || smc.relevant_order_block || smc.nearest_order_block, 'OB', '#A78BFA', 0.22, true),
+            this.normalizeOverlayZone(context.relevant_fvg || smc.relevant_fvg, 'FVG', '#F59E0B', 0.2, true),
+            this.normalizeOverlayZone(context.liquidity_zone || smc.liquidity_zone, 'Liquidez', '#38BDF8', 0.18, false),
+            this.normalizeOverlayZone(smc.liquidity_sweep?.zone || context.liquidity_sweep?.zone, 'Sweep', '#D946EF', 0.3, true),
+        ].filter(Boolean);
+
+        this.chartEngine?.applyLevels(overlayLevels);
+        this.chartEngine?.applyZones(zones);
+    }
+
+    normalizeOverlayZone(zone, label, color, opacity, active = false) {
+        if (!zone) return null;
+        const low = Number(zone.low ?? zone.bottom ?? zone.min ?? zone.price_low ?? zone.start ?? zone.price);
+        const high = Number(zone.high ?? zone.top ?? zone.max ?? zone.price_high ?? zone.end ?? zone.price);
+        if (!Number.isFinite(low) || !Number.isFinite(high)) return null;
+        return {
+            label,
+            type: String(zone.type || label).toLowerCase(),
+            low: Math.min(low, high),
+            high: Math.max(low, high),
+            color,
+            opacity,
+            active: Boolean(zone.active ?? active),
+        };
     }
 
     createNeutralAnalysis(candlesPayload) {
@@ -381,53 +375,38 @@ class AdvancedDashboard {
 
     connectMarketStreams() {
         if (this.latestStreaming === false || !String(this.currentAsset).endsWith('USDT')) {
-            if (this.klineSocket) {
-                this.klineSocket.onclose = null;
-                this.klineSocket.close();
-                this.klineSocket = null;
-            }
+            this.websocketEngine?.close();
+            this.klineSocket = null;
             this.setConnectionState('REST / historico');
             return;
         }
-        const symbol = this.currentAsset.toLowerCase();
-        const streams = [`${symbol}@kline_${this.currentTimeframe}`, `${symbol}@aggTrade`].join('/');
-        const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
-        if (this.klineSocket?.url === url && this.klineSocket.readyState <= 1) return;
-        if (this.klineSocket) this.klineSocket.close();
 
-        this.klineSocket = new WebSocket(url);
-        this.klineSocket.onopen = () => this.setConnectionState('WebSocket');
-        this.klineSocket.onmessage = (event) => {
-            const payload = JSON.parse(event.data);
-            const stream = payload.stream || '';
-            const data = payload.data || {};
-            if (stream.includes('@aggTrade')) {
-                this.handleTradeStream(data);
-                return;
-            }
-            const kline = data.k;
-            if (!kline) return;
-            const candle = {
-                time: Math.floor(kline.t / 1000),
-                open: Number(kline.o),
-                high: Number(kline.h),
-                low: Number(kline.l),
-                close: Number(kline.c),
-            };
-            this.candleSeries.update(candle);
-            this.volumeSeries.update({
-                time: candle.time,
-                value: Number(kline.v),
-                color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
-            });
-            this.setText('currentPrice', this.formatPrice(candle.close));
-            this.setText('lastUpdate', new Date().toLocaleTimeString('pt-BR'));
-            if (kline.x) this.scheduleRealtimeAnalysis();
-        };
-        this.klineSocket.onerror = () => this.setConnectionState('REST ativo');
-        this.klineSocket.onclose = () => {
-            if (!document.hidden) this.setConnectionState('Reconectando');
-        };
+        this.websocketEngine?.connectKline({
+            symbol: this.currentAsset,
+            timeframe: this.currentTimeframe,
+            includeTrades: true,
+            onState: (state) => this.setConnectionState(state),
+            onTrade: (trade) => this.handleTradeStream(trade),
+            onKline: (kline) => {
+                const candle = {
+                    time: Math.floor(kline.t / 1000),
+                    open: Number(kline.o),
+                    high: Number(kline.h),
+                    low: Number(kline.l),
+                    close: Number(kline.c),
+                };
+                const volume = {
+                    time: candle.time,
+                    value: Number(kline.v),
+                    color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
+                };
+                this.chartEngine?.update(candle, volume);
+                this.setText('currentPrice', this.formatPrice(candle.close));
+                this.setText('lastUpdate', new Date().toLocaleTimeString('pt-BR'));
+                if (kline.x) this.scheduleRealtimeAnalysis();
+            },
+        });
+        this.klineSocket = this.websocketEngine?.socket || null;
     }
 
     handleTradeStream(trade) {
@@ -537,9 +516,11 @@ class AdvancedDashboard {
         const marketMessage = analysis.market_message || candlesPayload.market_message || '';
         const confluenceAI = analysis.confluence_ai || {};
         const operationalSignal = analysis.operational_signal || {};
+        const institutionalDecision = analysis.institutional_decision || {};
+        const institutionalRisk = institutionalDecision.risk_plan || {};
         const finalScore = analysis.final_score || {};
-        const score = Number(operationalSignal.score ?? confluenceAI.score ?? analysis.operational_score ?? 0);
-        const gaugeScore = confluenceAI.score != null ? score : Number(analysis.operational_score || 0);
+        const score = Number(institutionalDecision.score ?? operationalSignal.score ?? confluenceAI.score ?? analysis.operational_score ?? 0);
+        const gaugeScore = institutionalDecision.score != null ? score : confluenceAI.score != null ? score : Number(analysis.operational_score || 0);
         const finalScore10 = Number(confluenceAI.score != null ? (score / 10) : (finalScore.score ?? (gaugeScore / 10)));
         const mtfConfluence = analysis.multi_timeframe?.confluence;
         const finalDecision = this.deriveFinalSignalDecision(analysis, signal, gaugeScore);
@@ -553,7 +534,7 @@ class AdvancedDashboard {
         this.setText('operationalScore', `${Math.round(gaugeScore)}/100`);
         this.setText('scoreValue', finalScore10.toFixed(1));
         this.setText('finalScoreValue', finalScore10.toFixed(1));
-        this.setText('scoreText', operationalSignal.status || confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
+        this.setText('scoreText', institutionalDecision.narrative || operationalSignal.status || confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
         this.updateGauge(gaugeScore);
 
         this.setText('mainSignal', finalDecision.label);
@@ -570,13 +551,13 @@ class AdvancedDashboard {
         }
 
         const levels = analysis.levels || {};
-        this.setText('levelEntrada', this.formatPrice(operationalSignal.entry_aggressive || levels.entrada));
+        this.setText('levelEntrada', this.formatPrice(institutionalRisk.entry ?? operationalSignal.entry_aggressive ?? levels.entrada));
         this.setText('levelEntradaConservadora', this.formatPrice(operationalSignal.entry_conservative));
-        this.setText('levelStop', this.formatPrice(operationalSignal.stop_loss ?? levels.stop_loss));
-        this.setText('levelTarget1', this.formatPrice(operationalSignal.take_profit_1 ?? levels.alvo_1));
-        this.setText('levelTarget2', this.formatPrice(operationalSignal.take_profit_2 ?? levels.alvo_2));
-        this.setText('riskRatio', Number.isFinite(Number(operationalSignal.risk_reward ?? levels.risco_retorno)) ? `1:${Number(operationalSignal.risk_reward ?? levels.risco_retorno).toFixed(2)}` : '--');
-        this.setText('cancelScenario', operationalSignal.cancellation_scenario || '--');
+        this.setText('levelStop', this.formatPrice(institutionalRisk.stop_loss ?? institutionalRisk.stop ?? operationalSignal.stop_loss ?? levels.stop_loss));
+        this.setText('levelTarget1', this.formatPrice(institutionalRisk.take_partial ?? institutionalRisk.take_profit_partial ?? institutionalRisk.take_profit_1 ?? operationalSignal.take_profit_1 ?? levels.alvo_1));
+        this.setText('levelTarget2', this.formatPrice(institutionalRisk.take_profit ?? institutionalRisk.take_profit_2 ?? operationalSignal.take_profit_2 ?? levels.alvo_2));
+        this.setText('riskRatio', Number.isFinite(Number(institutionalRisk.risk_reward ?? operationalSignal.risk_reward ?? levels.risco_retorno)) ? `1:${Number(institutionalRisk.risk_reward ?? operationalSignal.risk_reward ?? levels.risco_retorno).toFixed(2)}` : '--');
+        this.setText('cancelScenario', institutionalRisk.invalidation ? `Invalida em ${this.formatPrice(institutionalRisk.invalidation)}` : operationalSignal.cancellation_scenario || '--');
 
         this.setText('rsiValue', this.formatNumber(indicators.rsi, 2));
         this.setText('macdValue', this.formatNumber(indicators.macd, 4));
@@ -586,9 +567,9 @@ class AdvancedDashboard {
         this.setText('emaValue', `${this.formatPrice(indicators.ema9)} / ${this.formatPrice(indicators.ema21)}`);
         this.setText('bbValue', `${this.formatPrice(indicators.bollinger_lower)} - ${this.formatPrice(indicators.bollinger_upper)}`);
 
-        this.updateReasoning(operationalSignal.confirmations || confluenceAI.confirmations || finalScore.technical_reasons || analysis.reasoning || []);
+        this.updateReasoning(institutionalDecision.confirmations || operationalSignal.confirmations || confluenceAI.confirmations || finalScore.technical_reasons || analysis.reasoning || []);
         if (marketMessage) this.pushSoftMessage(marketMessage);
-        this.updateInvalidations(operationalSignal.invalidations || confluenceAI.invalidations || finalScore.invalidation_reasons || []);
+        this.updateInvalidations(institutionalDecision.invalidations || operationalSignal.invalidations || confluenceAI.invalidations || finalScore.invalidation_reasons || []);
         this.updateSupportResistance(Array.isArray(analysis.support_resistance) ? analysis.support_resistance : [], analysis.current_price || 0);
         this.updateCandleReading(Array.isArray(analysis.candle_reading) ? analysis.candle_reading : []);
         this.updateInstitutionalPanels(analysis);
@@ -604,6 +585,8 @@ class AdvancedDashboard {
                 score: Number(cardsDecision.score ?? fallbackScore ?? 0),
                 intensity: cardsDecision.intensity || 'moderada',
                 reason: cardsDecision.reason || '',
+                cards: cardsDecision.cards || {},
+                forces: cardsDecision.forces || {},
             };
         }
 
@@ -717,15 +700,19 @@ class AdvancedDashboard {
             { id: 'waitCardState', key: 'wait' },
         ];
         cards.forEach((item) => {
-            const value = item.key === key ? scoreLabel : '--';
+            const cardData = decision?.cards?.[item.key] || {};
+            const force = Number(cardData.force ?? decision?.forces?.[item.key]);
+            const value = Number.isFinite(force)
+                ? `${Math.round(force)}%${item.key === key ? ' ATIVO' : ''}`
+                : item.key === key ? scoreLabel : '--';
             this.setText(item.id, value);
             const el = document.getElementById(item.id);
             const card = el?.closest('.signal-pill');
             if (!card) return;
             card.classList.toggle('active', item.key === key);
             card.dataset.active = item.key === key ? 'true' : 'false';
-            card.dataset.intensity = item.key === key ? (decision?.intensity || 'moderada') : '';
-            card.title = item.key === key ? (decision?.reason || '') : '';
+            card.dataset.intensity = item.key === key ? (decision?.intensity || 'moderada') : (Number.isFinite(force) && force >= 55 ? 'moderada' : '');
+            card.title = cardData.reason || (item.key === key ? (decision?.reason || '') : `${Math.round(force || 0)}% de forca institucional`);
         });
     }
 
@@ -736,8 +723,7 @@ class AdvancedDashboard {
 
     async refreshAnalysisOnly() {
         try {
-            const cacheKey = `analysis:${this.currentAsset}:${this.currentTimeframe}`;
-            this.analysisMemoryCache.delete(cacheKey);
+            this.marketDataEngine?.invalidate(`analysis:${this.currentAsset}:${this.currentTimeframe}`);
             const analysis = await this.fetchAnalysis(this.currentAsset, this.currentTimeframe, undefined, true);
             if (analysis?.success) this.updateAnalysisPanel(analysis, { ticker: analysis.ticker || {}, streaming: this.latestStreaming });
         } catch (error) {

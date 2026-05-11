@@ -23,7 +23,17 @@ ASSETS = {
     'BBDC4': {'name': 'Banco Bradesco', 'sector': 'Banco'},
     'ABEV3': {'name': 'Ambev', 'sector': 'Alimentos'},
     'JBSS3': {'name': 'JBS', 'sector': 'Alimentos'},
-    'RENT3': {'name': 'Localiza', 'sector': 'Aluguel'}
+    'RENT3': {'name': 'Localiza', 'sector': 'Aluguel'},
+    'WIN': {'name': 'Mini Índice', 'sector': 'Futuros B3'},
+    'WDO': {'name': 'Mini Dólar', 'sector': 'Futuros B3'}
+}
+
+# ========================================
+# CATEGORIAS DE ATIVOS
+# ========================================
+
+CATEGORIES = {
+    'futures_b3': ['WIN', 'WDO']
 }
 
 TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w']

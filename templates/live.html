@@ -8,6 +8,19 @@
         Analise educativa. Nao e recomendacao financeira. Toda operacao envolve risco.
     </div>
 
+    <section class="live-command-header">
+        <div>
+            <span class="live-kicker">Institutional AI Trading Desk</span>
+            <h1>Live Trading IA</h1>
+            <p id="liveDeskSummary">Grafico primeiro. Contexto institucional carregando em segundo plano.</p>
+        </div>
+        <div class="live-command-status">
+            <span class="live-status-dot"></span>
+            <strong id="liveDeskState">AO VIVO</strong>
+            <small id="liveDeskUpdated">--</small>
+        </div>
+    </section>
+
     <div class="live-toolbar">
         <div class="asset-timeframe-selector">
             <select id="liveMarketSelect" class="form-control-premium">
@@ -41,7 +54,7 @@
     <div class="live-grid">
         <section class="live-chart-panel">
             <div class="chart-header-pro">
-                <h3>Live Trading IA - <span id="liveChartTitle">BTCUSDT · 15m</span></h3>
+                <h3>TradingView Style - <span id="liveChartTitle">BTCUSDT - 15m</span></h3>
                 <div class="chart-tools">
                     <button class="chart-tool-btn" id="liveSoundToggle" title="Alertas sonoros">
                         <i class="fas fa-volume-mute"></i>
@@ -70,29 +83,66 @@
                 <div><span>R/R</span><strong id="liveRiskReward">--</strong></div>
             </div>
 
+            <div class="analysis-card live-context-card">
+                <div class="card-title">Context Engine</div>
+                <div class="live-context-grid">
+                    <div><span>Vies</span><strong id="liveContextBias">--</strong></div>
+                    <div><span>Estrutura</span><strong id="liveContextStructure">--</strong></div>
+                    <div><span>Liquidez</span><strong id="liveContextLiquidity">--</strong></div>
+                    <div><span>Pressao</span><strong id="liveContextPressure">--</strong></div>
+                    <div><span>BOS</span><strong id="liveContextBos">--</strong></div>
+                    <div><span>CHOCH</span><strong id="liveContextChoch">--</strong></div>
+                </div>
+            </div>
+
             <div class="analysis-card live-levels-card">
-                <div class="card-title">Niveis Operacionais</div>
+                <div class="card-title">Plano Operacional</div>
                 <div class="risk-levels">
                     <div class="level"><span class="level-name">Entrada Ag.</span><span class="level-price" id="liveAggressiveEntry">--</span></div>
                     <div class="level"><span class="level-name">Entrada Cons.</span><span class="level-price" id="liveConservativeEntry">--</span></div>
                     <div class="level"><span class="level-name">Stop</span><span class="level-price" id="liveStopLoss">--</span></div>
                     <div class="level"><span class="level-name">Take</span><span class="level-price" id="liveTakeProfit">--</span></div>
+                    <div class="level"><span class="level-name">Invalidacao</span><span class="level-price" id="liveInvalidationLevel">--</span></div>
                 </div>
             </div>
 
             <div class="analysis-card">
-                <div class="card-title">Motivo da IA</div>
+                <div class="card-title">Resumo Narrativo</div>
                 <div class="live-reason" id="liveReason">--</div>
             </div>
 
-            <div class="analysis-card">
-                <div class="card-title">Mensagens da Mesa</div>
+            <div class="analysis-card live-terminal-card">
+                <div class="card-title">Feed Narrativo IA</div>
                 <div class="live-message-feed" id="liveMessageFeed"></div>
             </div>
 
             <div class="analysis-card">
-                <div class="card-title">Invalidacoes</div>
+                <div class="card-title">Filtros de Confirmacao</div>
                 <div class="live-invalidations" id="liveInvalidations"></div>
+            </div>
+
+            <div class="analysis-card execution-card">
+                <div class="card-title">Execucao Segura</div>
+                <div class="execution-status-grid">
+                    <div><span>Robo</span><strong id="execEnabled">DESLIGADO</strong></div>
+                    <div><span>Modo</span><strong id="execMode">ALERTA</strong></div>
+                    <div><span>Risco/trade</span><strong id="execRisk">--</strong></div>
+                    <div><span>Trades hoje</span><strong id="execTradesToday">0</strong></div>
+                    <div><span>Perda diaria</span><strong id="execDailyLoss">--</strong></div>
+                    <div><span>Ultima ordem</span><strong id="execLastOrder">--</strong></div>
+                </div>
+                <div class="execution-actions">
+                    <select id="execModeSelect" class="form-control-premium">
+                        <option value="alert">Modo alerta</option>
+                        <option value="semi_auto">Semi-automatico</option>
+                        <option value="auto">Automatico bloqueado</option>
+                    </select>
+                    <button class="btn-run-backtest" id="execArmBtn" type="button">Ligar paper</button>
+                    <button class="btn-run-backtest" id="execConfirmBtn" type="button">Confirmar ordem</button>
+                    <button class="btn-run-backtest danger" id="execKillBtn" type="button">Kill switch</button>
+                </div>
+                <div class="risk-disclaimer">Execucao inicia em paper trading. Ordem real exige .env, demo/testnet e confirmacao explicita. Nunca envia ordem sem stop e take.</div>
+                <div class="live-reason" id="execDecision">Aguardando sinal IA.</div>
             </div>
 
             <div class="analysis-card voice-card">
@@ -134,5 +184,8 @@
 <script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
 <script src="{{ url_for('static', filename='js/voice-assistant.js') }}"></script>
 <script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>
+<script src="{{ url_for('static', filename='js/market-data-engine.js') }}"></script>
+<script src="{{ url_for('static', filename='js/websocket-engine.js') }}"></script>
 <script src="{{ url_for('static', filename='js/live-trading.js') }}"></script>
 {% endblock %}

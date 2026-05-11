@@ -1,8 +1,8 @@
 """
 Roteador unico de dados de mercado para o FinanceAI.
 
-Mantem Binance como fonte principal de cripto e usa Yahoo Finance para
-acoes, Forex, commodities e indices, padronizando candles OHLCV.
+Mantem Bybit como fonte principal de cripto, Binance como fallback, MT5 para
+Forex/indices/commodities e Yahoo Finance como fallback historico.
 """
 
 from datetime import datetime, timezone
@@ -12,12 +12,14 @@ import pandas as pd
 import requests
 
 from .binance_client import BinanceMarketData
+from .bybit_provider import BybitMarketData
+from .mt5_provider import MT5Provider
 
 
 MARKETS = {
     "crypto": {
         "label": "Criptomoedas",
-        "source": "binance",
+        "source": "bybit",
         "streaming": True,
         "assets": [
             {"symbol": "BTCUSDT", "name": "Bitcoin / USDT"},
@@ -58,8 +60,8 @@ MARKETS = {
     },
     "forex": {
         "label": "Forex",
-        "source": "yahoo",
-        "streaming": False,
+        "source": "mt5",
+        "streaming": True,
         "assets": [
             {"symbol": "EURUSD", "name": "Euro / Dolar"},
             {"symbol": "GBPUSD", "name": "Libra / Dolar"},
@@ -71,8 +73,8 @@ MARKETS = {
     },
     "commodity": {
         "label": "Commodities",
-        "source": "yahoo",
-        "streaming": False,
+        "source": "mt5",
+        "streaming": True,
         "assets": [
             {"symbol": "XAUUSD", "name": "Ouro spot"},
             {"symbol": "GOLD", "name": "Ouro futuro"},
@@ -83,14 +85,16 @@ MARKETS = {
     },
     "index": {
         "label": "Indices",
-        "source": "yahoo",
-        "streaming": False,
+        "source": "mt5",
+        "streaming": True,
         "assets": [
             {"symbol": "IBOV", "name": "Ibovespa"},
             {"symbol": "SP500", "name": "S&P 500"},
             {"symbol": "NASDAQ", "name": "Nasdaq Composite"},
             {"symbol": "DOWJONES", "name": "Dow Jones"},
             {"symbol": "DXY", "name": "US Dollar Index"},
+            {"symbol": "US30", "name": "Dow Jones CFD"},
+            {"symbol": "NAS100", "name": "Nasdaq 100 CFD"},
         ],
     },
 }
@@ -113,6 +117,8 @@ YAHOO_SYMBOLS = {
     "NASDAQ": "^IXIC",
     "DOWJONES": "^DJI",
     "DXY": "DX-Y.NYB",
+    "US30": "^DJI",
+    "NAS100": "^IXIC",
 }
 
 
@@ -140,7 +146,9 @@ TIMEFRAME_SECONDS = {
 
 class MarketDataRouter:
     def __init__(self, timeout=10):
+        self.bybit = BybitMarketData(timeout=timeout)
         self.binance = BinanceMarketData(timeout=timeout)
+        self.mt5 = MT5Provider()
         self.session = requests.Session()
         self.timeout = timeout
         self._last_meta = {}
@@ -187,16 +195,31 @@ class MarketDataRouter:
         market = self.identify_market(symbol)
         limit = max(60, min(int(limit or 500), 1000))
         if market == "crypto":
-            return self._binance_klines(symbol, interval, limit, market)
+            return self._crypto_klines(symbol, interval, limit, market)
+        if market in {"forex", "commodity", "index"}:
+            return self._mt5_or_yahoo_klines(symbol, interval, limit, market)
         return self._yahoo_klines(symbol, interval, limit, market)
 
     def get_24h_ticker(self, symbol):
         symbol = self.normalize_symbol(symbol)
         market = self.identify_market(symbol)
         if market == "crypto":
-            ticker = self.binance.get_24h_ticker(symbol)
-            ticker.update(self._meta(symbol))
+            try:
+                ticker = self.bybit.get_24h_ticker(symbol)
+                self._set_meta(symbol, market, "bybit", "open", None, 0, True)
+            except Exception:
+                ticker = self.binance.get_24h_ticker(symbol)
+                self._set_meta(symbol, market, "binance", "open", "Bybit indisponivel; usando Binance fallback.", 0, True, True)
+            ticker.update(self.last_meta(symbol))
             return ticker
+        if market in {"forex", "commodity", "index"}:
+            try:
+                ticker = self.mt5.get_24h_ticker(symbol)
+                self._set_meta(symbol, market, "mt5", self._market_status(None, "1m", market), None, 0, True, False, self._safe_tick(symbol))
+                ticker.update(self.last_meta(symbol))
+                return ticker
+            except Exception as error:
+                self._set_meta(symbol, market, "yahoo", "fallback", f"MT5 indisponivel; usando Yahoo fallback. {error}", 0, False, True)
         df = self.get_klines(symbol, "1d", 120)
         close = float(df["close"].iloc[-1])
         previous = float(df["close"].iloc[-2]) if len(df) > 1 else close
@@ -214,14 +237,59 @@ class MarketDataRouter:
     def last_meta(self, symbol):
         return self._last_meta.get(self.normalize_symbol(symbol), self._meta(symbol))
 
-    def _binance_klines(self, symbol, interval, limit, market):
+    def get_realtime_quote(self, symbol):
+        symbol = self.normalize_symbol(symbol)
+        market = self.identify_market(symbol)
+        if market in {"forex", "commodity", "index"}:
+            tick = self.mt5.get_tick(symbol)
+            self._set_meta(symbol, market, "mt5", self._market_status(None, "1m", market), None, 0, True, False, tick)
+            return {**tick, **self.last_meta(symbol)}
+        ticker = self.get_24h_ticker(symbol)
+        return {
+            "symbol": symbol,
+            "bid": float(ticker.get("bid") or ticker.get("lastPrice") or 0),
+            "ask": float(ticker.get("ask") or ticker.get("lastPrice") or 0),
+            "last": float(ticker.get("lastPrice") or 0),
+            "spread": float(ticker.get("spread") or 0),
+            "volume": float(ticker.get("volume") or 0),
+            "source": ticker.get("source"),
+            **self.last_meta(symbol),
+        }
+
+    def _crypto_klines(self, symbol, interval, limit, market):
+        try:
+            df = self.bybit.get_klines(symbol, interval, limit)
+            self._set_meta(symbol, market, "bybit", "open", None, len(df), True)
+            return df
+        except Exception:
+            return self._binance_klines(symbol, interval, limit, market, fallback=True)
+
+    def _binance_klines(self, symbol, interval, limit, market, fallback=False):
         try:
             df = self.binance.get_klines(symbol, interval, limit)
-            self._set_meta(symbol, market, "binance", "open", None, len(df), True)
+            message = "Bybit indisponivel; usando Binance fallback." if fallback else None
+            self._set_meta(symbol, market, "binance", "open", message, len(df), True, fallback)
             return df
         except Exception as error:
-            self._set_meta(symbol, market, "binance", "no_data", f"Binance indisponivel para {symbol}.", 0, False)
+            message = "Bybit e Binance indisponiveis." if fallback else f"Binance indisponivel para {symbol}."
+            self._set_meta(symbol, market, "binance", "no_data", message, 0, False, fallback)
             raise error
+
+    def _mt5_or_yahoo_klines(self, symbol, interval, limit, market):
+        try:
+            df = self.mt5.get_klines(symbol, interval, limit)
+            tick = self._safe_tick(symbol)
+            self._set_meta(symbol, market, "mt5", self._market_status(df, interval, market), None, len(df), True, False, tick)
+            return df
+        except Exception as error:
+            message = f"MT5 indisponivel; usando Yahoo fallback. {error}"
+            try:
+                df = self._yahoo_klines(symbol, interval, limit, market)
+                self._set_meta(symbol, market, "yahoo", self._market_status(df, interval, market), message, len(df), False, True)
+                return df
+            except Exception:
+                self._set_meta(symbol, market, "mt5", "no_data", message, 0, False, True)
+                raise
 
     def _yahoo_klines(self, symbol, interval, limit, market):
         yahoo_symbol = self._yahoo_symbol(symbol)
@@ -285,6 +353,8 @@ class MarketDataRouter:
             return "open"
         if now.weekday() >= 5:
             return "closed"
+        if df is None or len(df) == 0:
+            return "open"
         last_ts = df.index[-1]
         max_age = TIMEFRAME_SECONDS.get(interval, 3600) * 2.5
         if interval in ["1d", "1w"]:
@@ -323,7 +393,13 @@ class MarketDataRouter:
             "candles_count": 0,
         }
 
-    def _set_meta(self, symbol, market, source, status, message, candles_count, streaming):
+    def _safe_tick(self, symbol):
+        try:
+            return self.mt5.get_tick(symbol)
+        except Exception:
+            return None
+
+    def _set_meta(self, symbol, market, source, status, message, candles_count, streaming, fallback=False, tick=None):
         self._last_meta[self.normalize_symbol(symbol)] = {
             "symbol": self.normalize_symbol(symbol),
             "market": market,
@@ -332,7 +408,12 @@ class MarketDataRouter:
             "market_status": status,
             "streaming": streaming,
             "message": message,
-            "fallback": False,
+            "fallback": fallback,
             "candles_count": candles_count,
+            "tick": tick,
+            "bid": tick.get("bid") if isinstance(tick, dict) else None,
+            "ask": tick.get("ask") if isinstance(tick, dict) else None,
+            "spread": tick.get("spread") if isinstance(tick, dict) else None,
+            "provider_symbol": tick.get("provider_symbol") if isinstance(tick, dict) else None,
             "updated_at": int(time.time()),
         }

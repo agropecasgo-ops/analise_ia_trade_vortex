@@ -219,12 +219,12 @@
         <div class="detailed-card">
             <div class="card-header-detailed">
                 <h3>Justificativa da IA</h3>
-                <span class="badge-ai">Binance Real</span>
+                <span class="badge-ai">Bybit Real</span>
             </div>
             <div class="reasoning-list" id="reasoningList">
                 <div class="reasoning-item">
                     <i class="fas fa-check-circle"></i>
-                    <span>Aguardando dados reais da Binance...</span>
+                    <span>Aguardando dados reais da Bybit...</span>
                 </div>
             </div>
             <div class="reasoning-list invalidation-list" id="invalidationList"></div>
@@ -435,5 +435,8 @@
 {% block extra_js %}
 <script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
 <script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>
+<script src="{{ url_for('static', filename='js/market-data-engine.js') }}"></script>
+<script src="{{ url_for('static', filename='js/websocket-engine.js') }}"></script>
 <script src="{{ url_for('static', filename='js/advanced-dashboard.js') }}"></script>
 {% endblock %}

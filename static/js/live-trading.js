@@ -3,15 +3,23 @@ class LiveTradingDashboard {
         this.symbol = 'BTCUSDT';
         this.currentMarket = 'crypto';
         this.timeframe = '15m';
+        this.chartEngine = null;
+        this.marketDataEngine = new window.MarketDataEngine({ provider: 'bybit', fallbackProvider: 'binance', ttl: 6000 });
+        this.websocketEngine = new window.WebSocketEngine({ provider: 'bybit', fallbackProvider: 'binance' });
         this.chart = null;
         this.candleSeries = null;
         this.volumeSeries = null;
         this.lastCandles = [];
-        this.priceLines = [];
         this.socket = null;
+        this.socketGeneration = 0;
+        this.reconnectTimer = null;
+        this.reconnectDelay = 2500;
+        this.candleController = null;
+        this.signalsController = null;
         this.statusController = null;
         this.statusTimer = null;
         this.candlePollTimer = null;
+        this.tickPollTimer = null;
         this.countdownTimer = null;
         this.lastCandleTime = 0;
         this.lastAnalysisPrice = 0;
@@ -19,9 +27,13 @@ class LiveTradingDashboard {
         this.lastAlertSignature = '';
         this.lastSignalAlertSignature = '';
         this.lastVoiceState = '';
+        this.narrativeSignatures = new Set();
         this.soundEnabled = false;
         this.supportResistance = {};
         this.streaming = true;
+        this.latestLiveStatus = null;
+        this.elementCache = new Map();
+        this.textCache = new Map();
         this.timeframeSeconds = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
         this.init();
     }
@@ -33,7 +45,7 @@ class LiveTradingDashboard {
         await this.loadAssets();
         await this.loadInitialCandles(true);
         this.fetchLiveStatus('initial');
-        this.fetchSignals();
+        this.fetchExecutionStatus();
         this.connectStreams();
         this.startCountdown();
     }
@@ -61,7 +73,18 @@ class LiveTradingDashboard {
         document.getElementById('btnLiveSignals')?.addEventListener('click', () => {
             document.getElementById('signals')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
+        document.getElementById('execArmBtn')?.addEventListener('click', () => this.updateExecutionMode(true));
+        document.getElementById('execConfirmBtn')?.addEventListener('click', () => this.confirmExecution(false));
+        document.getElementById('execKillBtn')?.addEventListener('click', () => this.killExecution());
+        document.getElementById('execModeSelect')?.addEventListener('change', () => this.updateExecutionMode(false));
         window.addEventListener('resize', () => this.resizeChart());
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            if (this.streaming && (!this.socket || this.socket.readyState === WebSocket.CLOSED)) {
+                this.connectStreams();
+            }
+            this.fetchLiveStatus('visibility_resume');
+        });
     }
 
     async loadAssets() {
@@ -86,62 +109,29 @@ class LiveTradingDashboard {
     }
 
     setupChart() {
-        const container = document.getElementById('liveChart');
-        if (!container) return;
-        container.innerHTML = '';
-        this.chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: Math.max(container.clientHeight, 620),
-            layout: {
-                background: { type: 'solid', color: '#05070d' },
-                textColor: '#F8FAFC',
-                fontFamily: 'Inter, Arial, sans-serif',
-            },
-            grid: {
-                horzLines: { color: 'rgba(56, 189, 248, 0.08)' },
-                vertLines: { color: 'rgba(255, 255, 255, 0.035)' },
-            },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            rightPriceScale: {
-                borderColor: 'rgba(56, 189, 248, 0.18)',
-                scaleMargins: { top: 0.08, bottom: 0.24 },
-            },
-            timeScale: {
-                borderColor: 'rgba(56, 189, 248, 0.18)',
-                timeVisible: true,
-                secondsVisible: false,
-            },
-        });
-        this.candleSeries = this.chart.addCandlestickSeries({
-            upColor: '#22C55E',
-            downColor: '#EF4444',
-            borderUpColor: '#22C55E',
-            borderDownColor: '#EF4444',
-            wickUpColor: '#22C55E',
-            wickDownColor: '#EF4444',
-        });
-        this.volumeSeries = this.chart.addHistogramSeries({
-            priceFormat: { type: 'volume' },
-            priceScaleId: '',
-            scaleMargins: { top: 0.82, bottom: 0 },
-        });
+        this.chartEngine = new window.LiveChartEngine('liveChart', { minHeight: 620 }).init();
+        this.chart = this.chartEngine?.chart;
+        this.candleSeries = this.chartEngine?.candleSeries;
+        this.volumeSeries = this.chartEngine?.volumeSeries;
     }
 
     resizeChart() {
-        const container = document.getElementById('liveChart');
-        if (!container || !this.chart) return;
-        this.chart.applyOptions({ width: container.clientWidth, height: Math.max(container.clientHeight, 620) });
+        this.chartEngine?.resize();
     }
 
     async resetLive(fit = false) {
         this.statusController?.abort();
+        this.candleController?.abort();
+        this.signalsController?.abort();
         clearInterval(this.candlePollTimer);
-        if (this.socket) {
-            this.socket.onclose = null;
-            this.socket.close();
-            this.socket = null;
-        }
-        this.clearPriceLines();
+        clearInterval(this.tickPollTimer);
+        clearTimeout(this.reconnectTimer);
+        this.websocketEngine?.close();
+        this.socket = null;
+        this.socketGeneration += 1;
+        this.reconnectDelay = 2500;
+        this.chartEngine?.clearOverlays();
+        this.narrativeSignatures.clear();
         this.setConnection('Atualizando');
         await this.loadInitialCandles(fit);
         this.fetchLiveStatus('change');
@@ -151,26 +141,26 @@ class LiveTradingDashboard {
     async loadInitialCandles(fit = false) {
         try {
             this.setConnection('Carregando');
-            const response = await fetch(`/api/candles/${this.symbol}/${this.timeframe}?limit=240`);
-            const data = await response.json();
+            this.candleController?.abort();
+            this.candleController = new AbortController();
+            const data = await this.marketDataEngine.candles(this.symbol, this.timeframe, 240, this.candleController.signal);
             if (!data.success) throw new Error(data.error || 'candles_unavailable');
             const candles = Array.isArray(data.candles) ? data.candles : [];
             const volumes = Array.isArray(data.volumes) ? data.volumes : [];
-            this.lastCandles = candles;
-            this.candleSeries.setData(candles);
-            this.volumeSeries.setData(volumes);
+            this.chartEngine?.setData(candles, volumes, fit);
+            this.lastCandles = this.chartEngine?.lastCandles || candles;
             const last = candles[candles.length - 1] || {};
             this.streaming = data.streaming ?? String(this.symbol).endsWith('USDT');
             this.lastCandleTime = Number(last.time || 0);
             this.lastAnalysisPrice = Number(last.close || 0);
             this.setText('livePrice', this.formatPrice(last.close || data.ticker?.lastPrice || 0));
-            this.setText('liveChartTitle', `${this.symbol} · ${String(data.source || '--').toUpperCase()} · ${this.timeframe}`);
+            this.setText('liveChartTitle', `${this.symbol} - ${String(data.source || '--').toUpperCase()} - ${this.timeframe}`);
             this.setText('liveDataSource', String(data.source || '--').toUpperCase());
             this.setText('liveMarketStatus', this.getMarketStatusText(data.market_status));
             if (data.market_message) this.pushMessage(data.market_message);
-            if (fit) this.chart.timeScale().fitContent();
             this.setConnection(this.streaming ? 'Grafico ativo' : 'REST / historico');
         } catch (error) {
+            if (error.name === 'AbortError') return;
             this.setConnection('REST falhou');
             this.pushMessage('Nao foi possivel carregar historico. Tentando manter a tela ativa.');
         }
@@ -178,23 +168,75 @@ class LiveTradingDashboard {
 
     connectStreams() {
         clearInterval(this.candlePollTimer);
-        if (!this.streaming || !String(this.symbol).endsWith('USDT')) {
+        clearInterval(this.tickPollTimer);
+        clearTimeout(this.reconnectTimer);
+        this.socketGeneration += 1;
+        if (!String(this.symbol).endsWith('USDT')) {
+            this.websocketEngine?.close();
+            this.socket = null;
+            this.setConnection(this.streaming ? 'MT5 tempo real' : 'REST / historico');
+            this.candlePollTimer = setInterval(() => this.loadInitialCandles(false), this.streaming ? 10000 : 60000);
+            if (this.streaming) {
+                this.refreshMarketTick();
+                this.tickPollTimer = setInterval(() => this.refreshMarketTick(), 1500);
+            }
+            return;
+        }
+        if (!this.streaming) {
+            this.websocketEngine?.close();
+            this.socket = null;
             this.setConnection('REST / historico');
             this.candlePollTimer = setInterval(() => this.loadInitialCandles(false), 60000);
             return;
         }
-        const stream = `${this.symbol.toLowerCase()}@kline_${this.timeframe}`;
-        const url = `wss://stream.binance.com:9443/ws/${stream}`;
-        this.socket = new WebSocket(url);
-        this.socket.onopen = () => this.setConnection('Tempo real');
-        this.socket.onerror = () => this.setConnection('WebSocket falhou');
-        this.socket.onclose = () => {
-            this.setConnection('Reconectando');
-            setTimeout(() => {
-                if (!document.hidden) this.connectStreams();
-            }, 2500);
+        this.websocketEngine?.connectKline({
+            symbol: this.symbol,
+            timeframe: this.timeframe,
+            onState: (state) => this.setConnection(state),
+            onKline: (kline) => this.handleKline({ k: kline }),
+        });
+        this.socket = this.websocketEngine?.socket || null;
+    }
+
+    async refreshMarketTick() {
+        try {
+            const data = await this.marketDataEngine.tick(this.symbol, undefined, true);
+            if (!data?.success) return;
+            const price = Number(data.last || data.bid || data.ask);
+            if (!Number.isFinite(price) || price <= 0) return;
+            this.setText('livePrice', this.formatPrice(price));
+            this.setText('liveDataSource', String(data.source || 'mt5').toUpperCase());
+            this.updateCurrentCandleFromTick(data, price);
+        } catch (error) {
+            this.setConnection('MT5 aguardando');
+        }
+    }
+
+    updateCurrentCandleFromTick(tick, price) {
+        const seconds = this.timeframeSeconds[this.timeframe] || 900;
+        const timestamp = Number(tick.time || Date.now() / 1000);
+        const bucket = Math.floor(timestamp / seconds) * seconds;
+        const last = this.lastCandles[this.lastCandles.length - 1];
+        const sameBucket = last && Number(last.time) === bucket;
+        const candle = sameBucket ? {
+            ...last,
+            high: Math.max(Number(last.high), price),
+            low: Math.min(Number(last.low), price),
+            close: price,
+        } : {
+            time: bucket,
+            open: Number(last?.close || price),
+            high: Math.max(Number(last?.close || price), price),
+            low: Math.min(Number(last?.close || price), price),
+            close: price,
         };
-        this.socket.onmessage = (event) => this.handleKline(JSON.parse(event.data));
+        const volume = {
+            time: candle.time,
+            value: Number(tick.volume || 0),
+            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
+        };
+        this.chartEngine?.update(candle, volume);
+        this.lastCandles = this.chartEngine?.lastCandles || this.lastCandles;
     }
 
     handleKline(payload) {
@@ -212,9 +254,8 @@ class LiveTradingDashboard {
             value: Number(kline.v),
             color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
         };
-        this.candleSeries.update(candle);
-        this.lastCandles = [...this.lastCandles.filter((item) => item.time !== candle.time), candle].slice(-260);
-        this.volumeSeries.update(volume);
+        this.chartEngine?.update(candle, volume);
+        this.lastCandles = this.chartEngine?.lastCandles || this.lastCandles;
         this.setText('livePrice', this.formatPrice(candle.close));
         this.lastCandleTime = candle.time;
 
@@ -249,6 +290,7 @@ class LiveTradingDashboard {
 
     updateStatusPanel(data) {
         if (!data) return;
+        this.latestLiveStatus = data;
         const state = data.state || 'ANALYZING';
         this.setText('liveOperationalStatus', data.status || 'ANALISANDO');
         this.setText('liveMainMessage', data.message || 'Analisando estrutura do mercado...');
@@ -263,11 +305,15 @@ class LiveTradingDashboard {
         this.setText('liveStopLoss', this.formatPrice(data.stop_loss));
         this.setText('liveTakeProfit', this.formatPrice(data.take_profit));
         this.setText('liveReason', data.reason || '--');
+        this.setText('liveDeskSummary', data.context?.narrative || data.message || '--');
+        this.setText('liveDeskState', data.status || state);
+        this.setText('liveDeskUpdated', this.formatClock(data.updated_at));
+        this.renderContext(data.operational_panel || {}, data.context || {});
         this.setText('liveMarketStatus', this.getMarketStatusText(data.market_data_status || data.market_status));
         this.setText('liveDataSource', String(data.source || '--').toUpperCase());
         if (data.market_message) this.pushMessage(data.market_message);
-        this.renderMessages(data.messages || []);
-        this.renderInvalidations(data.invalidations || []);
+        this.renderMessages(data.narrative_feed || data.messages || []);
+        this.renderConfirmationFilters(data.confirmation_filters || data.invalidations || [], data.real_invalidations || []);
         this.supportResistance = data.support_resistance || {};
         this.renderPriceLines(data);
         const markers = window.VisualAIOverlays?.buildCompleteMarkers(this.lastCandles, {
@@ -277,12 +323,13 @@ class LiveTradingDashboard {
             volume_analysis: data.volume || {},
             tape_reading: data.tape_reading || {},
         }) || [];
-        window.VisualAIOverlays?.set(this.candleSeries, [], markers);
+        this.chartEngine?.applyMarkers([...markers, ...this.normalizeSmartMarkers(data.smart_overlays?.markers || [])]);
         this.applyStateVisual(state);
         this.handleAlerts(data.alerts || [], data.status || state);
         this.handleVoiceStatus(data);
         if (data.signal_event) this.renderSignalEvent(data.signal_event);
-        this.fetchSignals();
+        this.renderLiveSignalsSnapshot(data.live_signals || {}, data.signal_event);
+        this.evaluateExecution(data);
     }
 
     handleVoiceStatus(data) {
@@ -292,8 +339,22 @@ class LiveTradingDashboard {
         window.financeVoiceAssistant?.speakLiveStatus(data);
     }
 
+    renderContext(panel, context) {
+        this.setText('liveContextBias', panel.bias || context.operational_bias || '--');
+        this.setText('liveContextStructure', panel.structure || context.market_structure || '--');
+        this.setText('liveContextLiquidity', panel.liquidity || '--');
+        this.setText('liveContextPressure', panel.pressure || context.pressure || '--');
+        this.setText('liveContextBos', this.eventLevel(panel.last_bos || context.last_bos));
+        this.setText('liveContextChoch', this.eventLevel(panel.last_choch || context.last_choch));
+        this.setText('liveInvalidationLevel', this.formatPrice(panel.invalidation || context.invalidation));
+    }
+
     fetchSignals() {
-        fetch(`/api/live/signals?symbol=${encodeURIComponent(this.symbol)}&timeframe=${encodeURIComponent(this.timeframe)}`)
+        this.signalsController?.abort();
+        this.signalsController = new AbortController();
+        fetch(`/api/live/signals?symbol=${encodeURIComponent(this.symbol)}&timeframe=${encodeURIComponent(this.timeframe)}`, {
+            signal: this.signalsController.signal,
+        })
             .then((response) => response.json())
             .then((data) => {
                 if (!data?.success) return;
@@ -302,7 +363,19 @@ class LiveTradingDashboard {
                 this.setText('liveSignalsCount', data.stats?.active_count ?? 0);
                 this.setText('liveSignalsBadge', `${data.stats?.active_count ?? 0} oportunidades em tempo real`);
             })
-            .catch(() => {});
+            .catch((error) => {
+                if (error.name !== 'AbortError') console.warn('Sinais live indisponiveis', error);
+            });
+    }
+
+    renderLiveSignalsSnapshot(snapshot, signalEvent) {
+        const active = Array.isArray(snapshot.active) ? snapshot.active : [];
+        this.renderSignals(active);
+        this.renderSignalEvent(signalEvent);
+        const stats = snapshot.stats || {};
+        const activeCount = stats.active_count ?? active.length;
+        this.setText('liveSignalsCount', activeCount);
+        this.setText('liveSignalsBadge', `${activeCount} oportunidades em tempo real`);
     }
 
     renderSignalEvent(signal) {
@@ -333,7 +406,7 @@ class LiveTradingDashboard {
             <article class="live-signal-card ${sideClass}">
                 <div class="live-signal-head">
                     <div>
-                        <h4>${signal.symbol || signal.asset} · ${signal.timeframe}</h4>
+                        <h4>${signal.symbol || signal.asset} - ${signal.timeframe}</h4>
                         <small>${signal.market_label || signal.market || '--'}</small>
                     </div>
                     <span class="live-signal-direction">${signal.direction || 'WAIT'}</span>
@@ -388,52 +461,150 @@ class LiveTradingDashboard {
     renderMessages(messages) {
         const feed = document.getElementById('liveMessageFeed');
         if (!feed) return;
-        feed.innerHTML = '';
         const items = messages.length ? messages : ['Aguardando leitura da IA...'];
-        items.forEach((message) => {
+        if (!Array.isArray(messages) || !messages.length || typeof items[0] === 'string') {
+            feed.innerHTML = '';
+        }
+        items.forEach((item) => {
+            const message = typeof item === 'string' ? item : item.text;
+            const signature = `${typeof item === 'string' ? 'IA' : item.kind}:${message}`;
+            if (typeof item !== 'string' && this.narrativeSignatures.has(signature)) return;
+            this.narrativeSignatures.add(signature);
             const row = document.createElement('div');
-            row.className = 'live-message-row';
-            row.innerHTML = `<i class="fas fa-circle"></i><span>${message}</span>`;
+            row.className = `live-message-row ${typeof item === 'string' ? 'info' : item.severity || 'info'}`;
+            row.innerHTML = `
+                <i class="fas fa-circle"></i>
+                <span>
+                    <small>${typeof item === 'string' ? this.clockNow() : this.formatClock(item.timestamp)} - ${typeof item === 'string' ? 'IA' : item.kind}</small>
+                    ${message}
+                </span>
+            `;
             feed.appendChild(row);
         });
+        while (feed.children.length > 24) feed.firstElementChild.remove();
+        feed.scrollTop = feed.scrollHeight;
     }
 
-    renderInvalidations(invalidations) {
+    renderConfirmationFilters(filters, realInvalidations = []) {
         const list = document.getElementById('liveInvalidations');
         if (!list) return;
         list.innerHTML = '';
-        const items = invalidations.length ? invalidations : ['Sem invalidacao critica no momento.'];
+        const items = filters.length ? filters : ['Sem filtros bloqueando no momento.'];
         items.forEach((message) => {
             const row = document.createElement('div');
-            row.className = 'live-invalidation-row';
-            row.innerHTML = `<i class="fas fa-times-circle"></i><span>${message}</span>`;
+            row.className = 'live-invalidation-row filter';
+            row.innerHTML = `<i class="fas fa-hourglass-half"></i><span>${message}</span>`;
+            list.appendChild(row);
+        });
+        realInvalidations.forEach((message) => {
+            const row = document.createElement('div');
+            row.className = 'live-invalidation-row critical';
+            row.innerHTML = `<i class="fas fa-times-circle"></i><span>Invalidacao real: ${message}</span>`;
             list.appendChild(row);
         });
     }
 
+    fetchExecutionStatus() {
+        fetch('/api/execution/status')
+            .then((response) => response.json())
+            .then((data) => this.renderExecutionStatus(data))
+            .catch(() => this.setText('execDecision', 'Execucao indisponivel no momento.'));
+    }
+
+    updateExecutionMode(enable) {
+        const mode = document.getElementById('execModeSelect')?.value || 'alert';
+        fetch('/api/execution/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enable, mode }),
+        })
+            .then((response) => response.json())
+            .then((data) => this.renderExecutionStatus(data))
+            .catch(() => this.setText('execDecision', 'Nao foi possivel atualizar execucao.'));
+    }
+
+    killExecution() {
+        fetch('/api/execution/kill-switch', { method: 'POST' })
+            .then((response) => response.json())
+            .then((data) => this.renderExecutionStatus(data))
+            .catch(() => this.setText('execDecision', 'Kill switch indisponivel.'));
+    }
+
+    evaluateExecution(status) {
+        if (!status?.success) return;
+        fetch('/api/execution/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ live_status: status }),
+        })
+            .then((response) => response.json())
+            .then((data) => this.renderExecutionStatus(data))
+            .catch(() => {});
+    }
+
+    confirmExecution(real = false) {
+        if (!this.latestLiveStatus) {
+            this.setText('execDecision', 'Sem sinal live para confirmar.');
+            return;
+        }
+        fetch('/api/execution/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ live_status: this.latestLiveStatus, real }),
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                this.renderExecutionStatus(data);
+                if (data.success) {
+                    this.showToast(data.paper ? 'Ordem paper registrada.' : 'Ordem enviada ao broker.', 'success');
+                }
+            })
+            .catch(() => this.setText('execDecision', 'Falha ao confirmar ordem.'));
+    }
+
+    renderExecutionStatus(data) {
+        if (!data) return;
+        const status = data.status || data;
+        const risk = status.risk || {};
+        this.setText('execEnabled', status.enabled ? 'LIGADO' : 'DESLIGADO');
+        this.setText('execMode', String(status.mode || 'alert').toUpperCase());
+        this.setText('execRisk', `${Number(risk.risk_per_trade_pct || 0).toFixed(2)}%`);
+        this.setText('execTradesToday', status.trades_today ?? 0);
+        this.setText('execDailyLoss', `${Number(status.daily_loss_pct || 0).toFixed(2)}%`);
+        this.setText('execLastOrder', status.last_order?.id || '--');
+        const brokerText = status.real_enabled ? 'Real habilitado por .env' : 'Paper trading';
+        this.setText('execDecision', data.decision?.reason || status.last_rejection || `${brokerText}. ${status.message || 'Aguardando sinal IA.'}`);
+        const select = document.getElementById('execModeSelect');
+        if (select && status.mode) select.value = status.mode;
+    }
+
     renderPriceLines(data) {
-        this.clearPriceLines();
-        [
-            { price: data.entry_aggressive, title: 'Entrada', color: '#38BDF8' },
-            { price: data.entry_conservative, title: 'Entrada Cons.', color: '#F59E0B' },
-            { price: data.stop_loss, title: 'Stop', color: '#EF4444' },
-            { price: data.take_profit, title: 'Take', color: '#22C55E' },
-        ].forEach((line) => {
-            if (!Number.isFinite(Number(line.price))) return;
-            this.priceLines.push(this.candleSeries.createPriceLine({
-                price: Number(line.price),
-                color: line.color,
-                lineWidth: 2,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: line.title,
-            }));
-        });
+        const smartLevels = Array.isArray(data.smart_overlays?.levels) ? data.smart_overlays.levels.map((line) => ({
+            price: line.price,
+            label: line.label,
+            color: line.color,
+        })) : [];
+        const levels = [
+            { price: data.entry_aggressive, label: 'Entrada', color: '#38BDF8' },
+            { price: data.entry_conservative, label: 'Entrada Cons.', color: '#F59E0B' },
+            { price: data.stop_loss, label: 'Stop', color: '#EF4444' },
+            { price: data.take_profit, label: 'Take', color: '#22C55E' },
+            ...smartLevels,
+        ];
+        this.chartEngine?.applyLevels(levels);
+        this.chartEngine?.applyZones(data.smart_overlays?.zones || []);
     }
 
     clearPriceLines() {
-        this.priceLines.forEach((line) => this.candleSeries?.removePriceLine(line));
-        this.priceLines = [];
+        this.chartEngine?.clearLineMap(this.chartEngine.priceLines);
+    }
+
+    renderZoneLines(zone) {
+        this.chartEngine?.applyZones([zone]);
+    }
+
+    clearOverlayLines() {
+        this.chartEngine?.clearLineMap(this.chartEngine.overlayLines);
     }
 
     isSupportResistanceBroken(price) {
@@ -534,8 +705,52 @@ class LiveTradingDashboard {
     }
 
     setText(id, value) {
-        const element = document.getElementById(id);
+        const next = value ?? '--';
+        if (this.textCache.get(id) === next) return;
+        this.textCache.set(id, next);
+        let element = this.elementCache.get(id);
+        if (!element) {
+            element = document.getElementById(id);
+            if (element) this.elementCache.set(id, element);
+        }
         if (element) element.textContent = value ?? '--';
+    }
+
+    normalizeSmartMarkers(markers) {
+        if (!Array.isArray(markers)) return [];
+        return markers
+            .filter((marker) => marker?.time && marker?.text)
+            .map((marker) => ({
+                time: marker.time,
+                position: marker.position || 'aboveBar',
+                shape: marker.shape || 'circle',
+                color: marker.color || '#38bdf8',
+                text: marker.text,
+            }));
+    }
+
+    eventLevel(event) {
+        if (!event) return '--';
+        const side = event.side ? String(event.side).toUpperCase() : 'OK';
+        const level = this.formatPrice(event.level);
+        return level === '--' ? side : `${side} ${level}`;
+    }
+
+    formatClock(value) {
+        const date = value ? new Date(value) : new Date();
+        if (Number.isNaN(date.getTime())) return '--';
+        return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    clockNow() {
+        return this.formatClock(new Date().toISOString());
+    }
+
+    withAlpha(color, alpha) {
+        const hex = String(color || '').replace('#', '');
+        if (hex.length !== 6) return color;
+        const value = Math.round(Math.max(0.08, Math.min(alpha, 0.9)) * 255).toString(16).padStart(2, '0');
+        return `#${hex}${value}`;
     }
 
     formatPrice(price) {

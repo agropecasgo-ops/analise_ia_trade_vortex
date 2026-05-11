@@ -941,77 +941,65 @@
     font-size: 11px;
 }
 
-.replay-controls,
-.replay-actions {
+.voice-card {
     display: grid;
-    grid-template-columns: repeat(6, minmax(120px, 1fr));
-    gap: 10px;
-    padding: 12px;
-    background: rgba(12, 18, 30, 0.88);
-    border: 1px solid rgba(148, 163, 184, 0.17);
-    border-radius: 8px;
-}
-
-.replay-actions {
-    grid-template-columns: repeat(6, auto) 1fr;
-    align-items: center;
-}
-
-.replay-progress {
-    display: grid;
-    gap: 6px;
-    color: var(--text-secondary);
-    font-size: 12px;
-}
-
-.replay-progress div {
-    height: 8px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: rgba(148, 163, 184, 0.16);
-}
-
-.replay-progress span span,
-.replay-progress div span {
-    display: block;
-}
-
-#replayProgressBar {
-    height: 100%;
-    width: 0;
-    background: var(--accent-blue);
-}
-
-.replay-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 10px;
 }
 
-.replay-stat {
-    padding: 10px;
+.execution-card {
+    display: grid;
+    gap: 12px;
+}
+
+.execution-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.execution-status-grid div {
+    padding: 9px;
     border: 1px solid rgba(148, 163, 184, 0.14);
-    border-radius: 6px;
+    border-radius: 8px;
     background: rgba(2, 6, 23, 0.42);
 }
 
-.replay-stat span {
+.execution-status-grid span {
     display: block;
     color: var(--text-secondary);
     font-size: 10px;
     text-transform: uppercase;
 }
 
-.replay-stat strong {
+.execution-status-grid strong {
     display: block;
-    margin-top: 5px;
-    color: var(--text-primary);
-    font-size: 16px;
+    margin-top: 4px;
+    color: var(--accent-blue);
+    font-size: 12px;
 }
 
-.voice-card {
+.execution-actions {
     display: grid;
-    gap: 10px;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.btn-run-backtest.danger {
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fecaca;
+}
+
+.live-invalidation-row.filter i {
+    color: #facc15;
+}
+
+.live-invalidation-row.critical {
+    border-color: rgba(239, 68, 68, 0.36);
+}
+
+.live-invalidation-row.critical i {
+    color: #ef4444;
 }
 
 .voice-controls {
@@ -1883,8 +1871,6 @@
 
 .top-controls,
 .live-toolbar,
-.replay-controls,
-.replay-actions,
 .chart-section-pro,
 .live-chart-panel,
 .analysis-card,
@@ -1915,9 +1901,7 @@
 }
 
 .top-controls,
-.live-toolbar,
-.replay-controls,
-.replay-actions {
+.live-toolbar {
     border-color: rgba(56, 189, 248, 0.18);
 }
 
@@ -2116,8 +2100,6 @@
 @media (max-width: 860px) {
     .top-controls,
     .live-toolbar,
-    .replay-controls,
-    .replay-actions,
     .asset-timeframe-selector {
         grid-template-columns: 1fr;
         flex-direction: column;
@@ -2159,14 +2141,12 @@
 }
 
 .advanced-dashboard,
-.live-shell,
-.replay-shell {
+.live-shell {
     color: var(--desk-text);
 }
 
 .advanced-dashboard::before,
-.live-shell::before,
-.replay-shell::before {
+.live-shell::before {
     content: "";
     position: fixed;
     inset: 0;
@@ -2185,11 +2165,6 @@
 .live-chart-panel,
 .live-ia-panel > .analysis-card,
 .live-status-card,
-.replay-main-panel,
-.replay-controls-panel,
-.replay-ia-panel,
-.replay-results-panel,
-.replay-signals-panel,
 .live-levels-card,
 .live-message-feed,
 .live-invalidations,
@@ -2223,11 +2198,6 @@
 .chart-section-pro:hover,
 .live-chart-panel:hover,
 .live-ia-panel > .analysis-card:hover,
-.replay-main-panel:hover,
-.replay-controls-panel:hover,
-.replay-ia-panel:hover,
-.replay-results-panel:hover,
-.replay-signals-panel:hover,
 .signal-card:hover,
 .score-card:hover {
     border-color: rgba(212, 175, 55, 0.32);
@@ -2240,10 +2210,8 @@
 .card-header-detailed h3,
 .chart-header-pro h3,
 .live-page-title h1,
-.replay-page-title h1,
 .live-signal-title,
 .voice-card h3,
-.replay-section-title,
 .drawer-header h3 {
     color: var(--desk-text);
     letter-spacing: 0.04em;
@@ -2254,7 +2222,6 @@
 .card-header-detailed h3::after,
 .chart-header-pro h3::after,
 .live-page-title h1::after,
-.replay-page-title h1::after,
 .drawer-header h3::after {
     content: "";
     display: block;
@@ -2274,8 +2241,6 @@
 .live-signals-open,
 .voice-toggle,
 .voice-test,
-.replay-control-btn,
-.replay-step-btn,
 .signal-filter-btn,
 .drawer-close {
     background: linear-gradient(145deg, rgba(24, 24, 27, 0.94), rgba(5, 5, 5, 0.88));
@@ -2293,8 +2258,6 @@
 .live-signals-open:hover,
 .voice-toggle:hover,
 .voice-test:hover,
-.replay-control-btn:hover,
-.replay-step-btn:hover,
 .signal-filter-btn:hover,
 .signal-filter-btn.active,
 .drawer-close:hover {
@@ -2305,7 +2268,6 @@
 
 .btn-run-backtest,
 .chart-tool-link,
-.replay-control-btn.primary,
 .voice-toggle.active {
     background: linear-gradient(135deg, rgba(212, 175, 55, 0.24), rgba(56, 189, 248, 0.12), rgba(5, 5, 5, 0.86));
     border-color: rgba(212, 175, 55, 0.34);
@@ -2315,7 +2277,6 @@
 .badge-ai,
 .market-status-badge,
 .live-status-pill,
-.replay-badge,
 .signal-status-badge,
 .source-badge,
 .score-badge {
@@ -2326,7 +2287,6 @@
 }
 
 .live-page-subtitle,
-.replay-page-subtitle,
 .info-item .label,
 .live-market-strip span,
 .live-metrics-grid span,
@@ -2336,7 +2296,6 @@
 .ind-name,
 .voice-status,
 .voice-last-message,
-.replay-meta,
 .signal-meta,
 .drawer-empty {
     color: var(--desk-muted);
@@ -2347,7 +2306,6 @@
 .ind-value,
 .live-market-strip strong,
 .live-metrics-grid strong,
-.replay-metric strong,
 .voice-last-message strong {
     color: var(--desk-gold-soft);
     text-shadow: 0 0 16px rgba(212, 175, 55, 0.16);
@@ -2372,11 +2330,9 @@
 
 .trading-chart,
 .live-chart,
-.replay-chart,
 .equity-curve,
 #chart-container,
-#live-chart,
-#replay-chart {
+#live-chart {
     background:
         linear-gradient(180deg, rgba(5, 5, 5, 0.98), rgba(13, 17, 23, 0.94)),
         radial-gradient(circle at 30% 0%, rgba(212, 175, 55, 0.08), transparent 42%);
@@ -2438,7 +2394,6 @@
 .validation-item,
 .level-item,
 .ind-item,
-.replay-signal-row,
 .live-signal-card {
     position: relative;
     background: linear-gradient(145deg, rgba(39, 39, 42, 0.68), rgba(8, 10, 15, 0.80));
@@ -2454,7 +2409,6 @@
 .validation-item:hover,
 .level-item:hover,
 .ind-item:hover,
-.replay-signal-row:hover,
 .live-signal-card:hover {
     border-color: rgba(212, 175, 55, 0.26);
     transform: translateY(-1px);
@@ -2462,7 +2416,6 @@
 
 .risk-disclaimer,
 .voice-disclaimer,
-.replay-disclaimer,
 .educational-warning {
     border: 1px solid rgba(212, 175, 55, 0.30);
     background: linear-gradient(90deg, rgba(212, 175, 55, 0.12), rgba(56, 189, 248, 0.04), rgba(5,5,5,0.72));
@@ -2482,7 +2435,7 @@
 .live-activity-dot,
 .market-status-dot,
 .voice-status-dot,
-.replay-live-dot {
+.live-status-dot {
     background: var(--desk-ai);
     box-shadow: 0 0 18px rgba(56, 189, 248, 0.58);
 }
@@ -2767,5 +2720,342 @@ select option {
 
     .operacional-chart {
         min-height: 440px;
+    }
+}
+
+/* =========================================================
+   LIVE TRADING INSTITUTIONAL PREMIUM
+   Scoped override for /live only.
+   ========================================================= */
+.live-shell {
+    --live-bg: #030712;
+    --live-panel: rgba(7, 13, 24, 0.82);
+    --live-panel-strong: rgba(10, 18, 32, 0.92);
+    --live-line: rgba(125, 211, 252, 0.18);
+    --live-line-soft: rgba(148, 163, 184, 0.12);
+    --live-cyan: #38bdf8;
+    --live-blue: #60a5fa;
+    --live-green: #20d18c;
+    --live-red: #f05252;
+    --live-amber: #f59e0b;
+    --live-text: #eef6ff;
+    --live-muted: #8ea4bd;
+    padding: 18px;
+    gap: 14px;
+    background:
+        radial-gradient(900px 520px at 15% -10%, rgba(56, 189, 248, 0.14), transparent 60%),
+        radial-gradient(760px 460px at 92% 4%, rgba(96, 165, 250, 0.10), transparent 58%),
+        linear-gradient(135deg, #020617 0%, #07111f 54%, #030712 100%);
+    color: var(--live-text);
+}
+
+.live-shell::before {
+    opacity: 0.38;
+    background-image:
+        linear-gradient(rgba(125, 211, 252, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(125, 211, 252, 0.028) 1px, transparent 1px);
+    background-size: 48px 48px;
+}
+
+.live-command-header,
+.live-toolbar,
+.live-chart-panel,
+.live-ia-panel > .analysis-card,
+.live-status-card,
+.live-signals-panel {
+    border-radius: 8px;
+    border: 1px solid var(--live-line);
+    background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(3, 7, 18, 0.78));
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+.live-command-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    gap: 18px;
+    padding: 18px 20px;
+}
+
+.live-kicker {
+    color: var(--live-cyan);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.live-command-header h1 {
+    margin: 4px 0 4px;
+    font-size: clamp(24px, 3vw, 38px);
+    font-weight: 850;
+    letter-spacing: 0;
+}
+
+.live-command-header p {
+    max-width: 760px;
+    margin: 0;
+    color: var(--live-muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.live-command-status {
+    min-width: 170px;
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+    color: var(--live-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+.live-command-status strong {
+    color: var(--live-green);
+    font-size: 13px;
+    letter-spacing: 0;
+}
+
+.live-status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    background: var(--live-green);
+    box-shadow: 0 0 18px rgba(32, 209, 140, 0.55);
+}
+
+.live-toolbar {
+    display: grid;
+    grid-template-columns: minmax(330px, auto) 1fr auto;
+    align-items: center;
+}
+
+.live-grid {
+    grid-template-columns: minmax(0, 2.45fr) minmax(360px, 0.88fr);
+    gap: 14px;
+}
+
+.live-chart-panel {
+    min-height: 74vh;
+}
+
+.live-chart {
+    min-height: 660px;
+    border-radius: 8px;
+    border-color: rgba(56, 189, 248, 0.20);
+    background: linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(3, 7, 18, 0.96));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 0 34px rgba(56, 189, 248, 0.055);
+}
+
+.form-control-premium,
+.tf-btn,
+.chart-tool-btn,
+.btn-run-backtest,
+.live-signals-open {
+    border-radius: 8px;
+    border-color: rgba(148, 163, 184, 0.18);
+    background: rgba(2, 6, 23, 0.62);
+    color: var(--live-text);
+    box-shadow: none;
+}
+
+.tf-btn.active,
+.tf-btn:hover,
+.chart-tool-btn:hover,
+.btn-run-backtest:hover,
+.live-signals-open:hover {
+    border-color: rgba(56, 189, 248, 0.45);
+    color: var(--live-cyan);
+    box-shadow: 0 0 22px rgba(56, 189, 248, 0.13);
+}
+
+.live-market-strip div,
+.live-metrics-grid div,
+.live-context-grid div,
+.risk-levels .level {
+    border-radius: 6px;
+    border: 1px solid var(--live-line-soft);
+    background: rgba(2, 6, 23, 0.48);
+}
+
+.live-market-strip span,
+.live-metrics-grid span,
+.live-context-grid span,
+.live-status-card span,
+.level-name {
+    color: var(--live-muted);
+    letter-spacing: 0;
+}
+
+.live-market-strip strong,
+.live-metrics-grid strong,
+.live-context-grid strong,
+.level-price {
+    color: var(--live-text);
+    text-shadow: none;
+}
+
+.live-status-card {
+    overflow: hidden;
+    border-left: 3px solid var(--live-amber);
+}
+
+.live-status-card strong {
+    color: var(--live-amber);
+    letter-spacing: 0;
+    text-shadow: 0 0 18px rgba(245, 158, 11, 0.20);
+}
+
+.live-status-card[data-state="BUY_CONFIRMED"] strong,
+.live-status-card[data-state="AGGRESSIVE_ENTRY"] strong,
+.live-status-card[data-state="CONSERVATIVE_ENTRY"] strong {
+    color: var(--live-green);
+}
+
+.live-status-card[data-state="SELL_CONFIRMED"] strong,
+.live-status-card[data-state="INVALIDATED"] strong,
+.live-status-card[data-state="HIGH_RISK"] strong {
+    color: var(--live-red);
+}
+
+.live-context-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.live-context-grid div {
+    padding: 9px 10px;
+}
+
+.live-context-grid span,
+.live-message-row small {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--live-muted);
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+}
+
+.live-context-grid strong {
+    display: block;
+    min-height: 18px;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.live-reason {
+    border-radius: 6px;
+    border-color: var(--live-line-soft);
+    background: rgba(2, 6, 23, 0.46);
+    color: #c7d6e8;
+}
+
+.live-terminal-card .card-title::after {
+    background: linear-gradient(90deg, var(--live-cyan), var(--live-blue));
+}
+
+.live-message-feed {
+    max-height: 260px;
+    padding-right: 3px;
+    font-family: "Cascadia Mono", Consolas, monospace;
+    scroll-behavior: smooth;
+}
+
+.live-message-row,
+.live-invalidation-row {
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.10);
+    border-left: 2px solid var(--live-cyan);
+    background: rgba(2, 6, 23, 0.52);
+    color: #c7d6e8;
+    box-shadow: none;
+}
+
+.live-message-row.positive {
+    border-left-color: var(--live-green);
+}
+
+.live-message-row.negative,
+.live-invalidation-row {
+    border-left-color: var(--live-red);
+}
+
+.live-message-row.warning {
+    border-left-color: var(--live-amber);
+}
+
+.live-message-row i {
+    color: var(--live-cyan);
+}
+
+.live-message-row.positive i {
+    color: var(--live-green);
+}
+
+.live-message-row.negative i {
+    color: var(--live-red);
+}
+
+.live-message-row.warning i {
+    color: var(--live-amber);
+}
+
+.card-title,
+.card-header-detailed h3,
+.chart-header-pro h3 {
+    letter-spacing: 0;
+}
+
+.card-title::after,
+.card-header-detailed h3::after,
+.chart-header-pro h3::after {
+    background: linear-gradient(90deg, var(--live-cyan), var(--live-blue));
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.16);
+}
+
+.live-signal-card,
+.live-empty-signal {
+    border-radius: 8px;
+    background: rgba(2, 6, 23, 0.52);
+}
+
+@media (max-width: 1280px) {
+    .live-toolbar,
+    .live-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .live-chart-panel {
+        min-height: 620px;
+    }
+}
+
+@media (max-width: 760px) {
+    .live-shell {
+        padding: 10px;
+    }
+
+    .live-command-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .live-command-status {
+        justify-items: start;
+    }
+
+    .live-market-strip,
+    .live-metrics-grid,
+    .live-context-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .live-chart {
+        min-height: 500px;
     }
 }
