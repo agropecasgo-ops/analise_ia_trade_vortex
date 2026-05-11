@@ -71,6 +71,15 @@ MARKETS = {
             {"symbol": "USDCHF", "name": "Dolar / Franco suico"},
         ],
     },
+    "futures_b3": {
+        "label": "Futuros B3",
+        "source": "mt5",
+        "streaming": True,
+        "assets": [
+            {"symbol": "WIN", "name": "Mini Indice atual"},
+            {"symbol": "WDO", "name": "Mini Dolar atual"},
+        ],
+    },
     "commodity": {
         "label": "Commodities",
         "source": "mt5",
@@ -166,6 +175,8 @@ class MarketDataRouter:
             return "br_stock"
         if symbol.endswith("USDT"):
             return "crypto"
+        if symbol in {"WIN", "WDO"}:
+            return "futures_b3"
         if len(symbol) == 6 and symbol.isalpha():
             return "forex"
         return "us_stock"
@@ -196,7 +207,7 @@ class MarketDataRouter:
         limit = max(60, min(int(limit or 500), 1000))
         if market == "crypto":
             return self._crypto_klines(symbol, interval, limit, market)
-        if market in {"forex", "commodity", "index"}:
+        if market in {"forex", "futures_b3", "commodity", "index"}:
             return self._mt5_or_yahoo_klines(symbol, interval, limit, market)
         return self._yahoo_klines(symbol, interval, limit, market)
 
@@ -212,7 +223,7 @@ class MarketDataRouter:
                 self._set_meta(symbol, market, "binance", "open", "Bybit indisponivel; usando Binance fallback.", 0, True, True)
             ticker.update(self.last_meta(symbol))
             return ticker
-        if market in {"forex", "commodity", "index"}:
+        if market in {"forex", "futures_b3", "commodity", "index"}:
             try:
                 ticker = self.mt5.get_24h_ticker(symbol)
                 self._set_meta(symbol, market, "mt5", self._market_status(None, "1m", market), None, 0, True, False, self._safe_tick(symbol))
@@ -240,7 +251,7 @@ class MarketDataRouter:
     def get_realtime_quote(self, symbol):
         symbol = self.normalize_symbol(symbol)
         market = self.identify_market(symbol)
-        if market in {"forex", "commodity", "index"}:
+        if market in {"forex", "futures_b3", "commodity", "index"}:
             tick = self.mt5.get_tick(symbol)
             self._set_meta(symbol, market, "mt5", self._market_status(None, "1m", market), None, 0, True, False, tick)
             return {**tick, **self.last_meta(symbol)}

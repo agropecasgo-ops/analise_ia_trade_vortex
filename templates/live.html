@@ -189,7 +189,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="{{ url_for('static', filename='js/lightweight-charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/voice-assistant.js') }}"></script>
 <script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>

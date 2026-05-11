@@ -28,6 +28,8 @@ class MT5Provider:
     }
 
     SYMBOL_ALIASES = {
+        "WIN": ["WIN$N", "WIN$", "WIN"],
+        "WDO": ["WDO$N", "WDO$", "WDO"],
         "GOLD": ["XAUUSD", "GOLD"],
         "XAUUSD": ["XAUUSD", "GOLD"],
         "WTI": ["WTI", "USOIL", "XTIUSD", "CL"],
@@ -78,6 +80,8 @@ class MT5Provider:
 
     def get_klines(self, symbol, interval="1h", limit=500):
         resolved = self.resolve_symbol(symbol)
+        if "Fonte de dados" in resolved:
+            raise ValueError(f"Simbolo MT5 nao encontrado: {symbol}")
         timeframe_name = self.TIMEFRAMES.get(interval, "TIMEFRAME_H1")
         timeframe = getattr(mt5, timeframe_name)
         rows = mt5.copy_rates_from_pos(resolved, timeframe, 0, max(60, min(int(limit), 2000)))
@@ -113,6 +117,8 @@ class MT5Provider:
 
     def get_tick(self, symbol):
         resolved = self.resolve_symbol(symbol)
+        if "Fonte de dados" in resolved:
+            raise ValueError(f"Simbolo MT5 nao encontrado: {symbol}")
         tick = mt5.symbol_info_tick(resolved)
         info = mt5.symbol_info(resolved)
         if tick is None or info is None:

@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "lightweight-charts": "^5.2.0"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
+  }
+}
