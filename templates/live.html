@@ -14,6 +14,9 @@
             <h1>Live Trading IA</h1>
             <p id="liveDeskSummary">Grafico primeiro. Contexto institucional carregando em segundo plano.</p>
         </div>
+        <div class="alert alert-warning" id="winWdoMessage" style="display: none;">
+            WIN/WDO exigem feed B3 compatível. Configure uma corretora ou provedor de dados com esses ativos.
+        </div>
         <div class="live-command-status">
             <span class="live-status-dot"></span>
             <strong id="liveDeskState">AO VIVO</strong>
@@ -28,6 +31,11 @@
             </select>
             <select id="liveAssetSelect" class="form-control-premium">
                 <option value="BTCUSDT">BTCUSDT - Bitcoin</option>
+                <option value="ETHUSDT">ETHUSDT - Ethereum</option>
+                <option value="WIN">WIN - Mini Índice</option>
+                <option value="WDO">WDO - Mini Dólar</option>
+                <option value="EURUSD">EURUSD - Euro/Dólar</option>
+                <option value="XAUUSD">XAUUSD - Ouro</option>
             </select>
             <div class="timeframe-buttons">
                 <button class="tf-btn" data-live-tf="1m">1m</button>

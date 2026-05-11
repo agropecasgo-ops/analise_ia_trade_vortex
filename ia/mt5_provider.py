@@ -72,6 +72,8 @@ class MT5Provider:
             if match:
                 mt5.symbol_select(match, True)
                 return match
+        if symbol.upper() in ["WIN", "WDO"]:
+            return f"{symbol.upper()} - Fonte de dados não configurada"
         raise ValueError(f"Simbolo MT5 nao encontrado: {symbol}")
 
     def get_klines(self, symbol, interval="1h", limit=500):
