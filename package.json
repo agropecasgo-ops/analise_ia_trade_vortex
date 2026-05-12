@@ -1,4 +1,10 @@
 {
+  "private": true,
+  "scripts": {
+    "start": "python -X utf8 app.py",
+    "dev": "python -X utf8 app.py",
+    "test": "python -X utf8 test_system.py"
+  },
   "dependencies": {
     "lightweight-charts": "^5.2.0"
   },

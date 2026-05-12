@@ -24,6 +24,7 @@ class LiveTradingDashboard {
         this.lastCandleTime = 0;
         this.lastAnalysisPrice = 0;
         this.lastAnalysisVolume = 0;
+        this.lastTickVolumes = {};
         this.lastAlertSignature = '';
         this.lastSignalAlertSignature = '';
         this.lastVoiceState = '';
@@ -109,7 +110,7 @@ class LiveTradingDashboard {
     }
 
     setupChart() {
-        this.chartEngine = new window.LiveChartEngine('liveChart', { minHeight: 620 }).init();
+        this.chartEngine = new window.LiveChartEngine('liveChart', { minHeight: 520 }).init();
         this.chart = this.chartEngine?.chart;
         this.candleSeries = this.chartEngine?.candleSeries;
         this.volumeSeries = this.chartEngine?.volumeSeries;
@@ -230,13 +231,28 @@ class LiveTradingDashboard {
             low: Math.min(Number(last?.close || price), price),
             close: price,
         };
+        const volumeValue = this.tickVolumeDelta(tick);
         const volume = {
             time: candle.time,
-            value: Number(tick.volume || 0),
+            value: volumeValue,
             color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
         };
         this.chartEngine?.update(candle, volume);
         this.lastCandles = this.chartEngine?.lastCandles || this.lastCandles;
+    }
+
+    tickVolumeDelta(tick) {
+        const source = String(tick?.source || '').toLowerCase();
+        const key = `${source || 'tick'}:${this.symbol}`;
+        const current = Number(tick?.volume || 0);
+        if (source !== 'profit_rtd') return Number.isFinite(current) ? current : 0;
+        const previous = this.lastTickVolumes[key];
+        this.lastTickVolumes[key] = Number.isFinite(current) ? current : previous;
+        if (!Number.isFinite(current)) return 0;
+        if (!Number.isFinite(previous) || current < previous) {
+            return Number(tick?.last_quantity || 0) || 0;
+        }
+        return Math.max(0, current - previous);
     }
 
     handleKline(payload) {
@@ -309,6 +325,7 @@ class LiveTradingDashboard {
         this.setText('liveDeskState', data.status || state);
         this.setText('liveDeskUpdated', this.formatClock(data.updated_at));
         this.renderContext(data.operational_panel || {}, data.context || {});
+        this.renderCandleReading(data.candle_reading || {}, data.operational_panel || {});
         this.setText('liveMarketStatus', this.getMarketStatusText(data.market_data_status || data.market_status));
         this.setText('liveDataSource', String(data.source || '--').toUpperCase());
         if (data.market_message) this.pushMessage(data.market_message);
@@ -347,6 +364,18 @@ class LiveTradingDashboard {
         this.setText('liveContextBos', this.eventLevel(panel.last_bos || context.last_bos));
         this.setText('liveContextChoch', this.eventLevel(panel.last_choch || context.last_choch));
         this.setText('liveInvalidationLevel', this.formatPrice(panel.invalidation || context.invalidation));
+    }
+
+    renderCandleReading(reading, panel) {
+        const candlePanel = reading.panel || {};
+        const sequence = reading.sequence || {};
+        this.setText('liveCandleCurrent', candlePanel.current_candle || reading.current_candle?.reading || panel.current_candle || '--');
+        this.setText('liveCandleSequence', candlePanel.sequence || sequence.reading || panel.candle_sequence || '--');
+        this.setText('liveCandleScore', Number.isFinite(Number(reading.score)) ? `${Number(reading.score).toFixed(0)}/100` : '--');
+        this.setText('liveCandleConfidence', Number.isFinite(Number(reading.confidence)) ? `${Number(reading.confidence).toFixed(0)}%` : '--');
+        const confluences = candlePanel.active_confluences || panel.active_confluences || [];
+        this.setText('liveCandleConfluences', Array.isArray(confluences) && confluences.length ? String(confluences.length) : '--');
+        this.setText('liveCandleWait', candlePanel.wait_reason || panel.wait_reason || reading.blockers?.[0] || '--');
     }
 
     fetchSignals() {

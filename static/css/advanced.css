@@ -117,6 +117,405 @@
     color: var(--accent-blue);
 }
 
+/* Trading hours heatmap */
+.trading-hours-card {
+    border: 1px solid rgba(249, 115, 22, 0.78);
+    border-radius: 10px;
+    background: linear-gradient(90deg, rgba(124, 45, 18, 0.62), rgba(69, 26, 21, 0.74));
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(249, 115, 22, 0.12);
+    overflow: hidden;
+    scroll-margin-top: 92px;
+}
+
+.trading-hours-card:target {
+    border-color: #facc15;
+    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.28), 0 20px 70px rgba(249, 115, 22, 0.22);
+}
+
+.trading-hours-header {
+    width: 100%;
+    min-height: 86px;
+    padding: 18px 26px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.trading-hours-header > i {
+    margin-left: auto;
+    color: #fb923c;
+    transition: transform 0.22s ease;
+}
+
+.trading-hours-card.is-open .trading-hours-header > i {
+    transform: rotate(90deg);
+}
+
+.trading-hours-icon {
+    width: 56px;
+    height: 56px;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 10px;
+    color: #fb923c;
+    background: rgba(154, 72, 26, 0.62);
+}
+
+.trading-hours-header strong {
+    display: block;
+    color: #fb923c;
+    font-size: 18px;
+    line-height: 1.2;
+}
+
+.trading-hours-header small {
+    display: block;
+    margin-top: 4px;
+    color: #93b4df;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.trading-hours-body {
+    display: none;
+    margin: 0 16px 16px;
+    padding: 24px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 10px;
+    background: rgba(5, 7, 13, 0.72);
+}
+
+.trading-hours-card.is-open .trading-hours-body {
+    display: block;
+}
+
+.trading-hours-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 22px;
+}
+
+.trading-hours-title-row h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.trading-hours-title-row p {
+    margin: 4px 0 0;
+    color: #8aa0c0;
+    font-size: 13px;
+}
+
+.trading-hours-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: #8aa0c0;
+    font-size: 12px;
+}
+
+.trading-hours-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.trading-hours-legend i {
+    width: 12px;
+    height: 12px;
+    border-radius: 4px;
+}
+
+.trading-hours-legend .now { background: #0891b2; box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.22); }
+.trading-hours-legend .excellent { background: #22c55e; }
+.trading-hours-legend .high { background: #166534; }
+.trading-hours-legend .medium { background: #b77906; }
+.trading-hours-legend .low { background: #7f2d2d; }
+
+.trading-hours-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(52px, 1fr));
+    gap: 8px;
+}
+
+.trading-hour-cell {
+    min-height: 62px;
+    padding: 10px 6px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    color: #e2e8f0;
+    font-size: 11px;
+    font-weight: 800;
+    border: 1px solid transparent;
+}
+
+.trading-hour-cell span,
+.trading-hour-cell small {
+    display: block;
+}
+
+.trading-hour-cell small {
+    margin-top: 2px;
+    color: rgba(226, 232, 240, 0.72);
+    font-size: 9px;
+}
+
+.trading-hour-cell.excellent { background: #1dbf61; }
+.trading-hour-cell.high { background: #176d38; }
+.trading-hour-cell.medium { background: #b77906; }
+.trading-hour-cell.low { background: #792b2b; }
+
+.trading-hour-cell.is-now {
+    border-color: #22d3ee;
+    box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.35), 0 0 22px rgba(34, 211, 238, 0.16);
+}
+
+.trading-hours-note {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px solid rgba(34, 197, 94, 0.36);
+    border-radius: 8px;
+    color: #22c55e;
+    background: rgba(20, 83, 45, 0.30);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+/* Realtime AI signals page */
+.signals-page {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 100%;
+    padding: 16px;
+}
+
+.signals-hero,
+.signals-toolbar,
+.signals-section {
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.84), rgba(3, 7, 18, 0.78));
+    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.34);
+}
+
+.signals-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+    padding: 20px;
+}
+
+.signals-hero h1 {
+    margin: 4px 0;
+    font-size: 30px;
+    font-weight: 850;
+}
+
+.signals-hero p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.signals-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(100px, 1fr));
+    gap: 10px;
+}
+
+.signals-stats div {
+    padding: 10px 12px;
+    border: 1px solid rgba(56, 189, 248, 0.16);
+    border-radius: 7px;
+    background: rgba(2, 6, 23, 0.58);
+}
+
+.signals-stats span,
+.signal-level-grid span,
+.signal-be-box span {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.signals-stats strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--accent-yellow);
+    font-size: 18px;
+}
+
+.signals-toolbar {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(150px, 1fr));
+    gap: 10px;
+    padding: 14px;
+}
+
+.signals-section {
+    padding: 14px;
+}
+
+.signals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+}
+
+.signals-grid.compact {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.signal-realtime-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 8px;
+    background: rgba(2, 6, 23, 0.62);
+}
+
+.signal-realtime-card.buy {
+    border-left: 4px solid #22c55e;
+}
+
+.signal-realtime-card.sell {
+    border-left: 4px solid #ef4444;
+}
+
+.signal-realtime-card.high-score {
+    border-color: rgba(250, 204, 21, 0.72);
+    box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.22), 0 0 32px rgba(250, 204, 21, 0.10);
+}
+
+.signal-realtime-head,
+.signal-direction-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.signal-realtime-head h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.signal-realtime-head small {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.signal-force {
+    min-width: 54px;
+    min-height: 36px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 999px;
+    color: #03120b;
+    background: #22c55e;
+    font-size: 14px;
+    font-weight: 900;
+}
+
+.signal-direction-row strong {
+    color: var(--text-primary);
+    font-size: 18px;
+}
+
+.signal-direction-row span {
+    padding: 6px 9px;
+    border-radius: 999px;
+    color: #facc15;
+    background: rgba(250, 204, 21, 0.10);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.signal-level-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.signal-level-grid div {
+    padding: 9px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.58);
+}
+
+.signal-level-grid strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.signal-be-box {
+    padding: 10px;
+    border: 1px solid rgba(56, 189, 248, 0.18);
+    border-radius: 7px;
+    background: rgba(56, 189, 248, 0.08);
+}
+
+.signal-be-box.active {
+    border-color: rgba(34, 197, 94, 0.48);
+    background: rgba(34, 197, 94, 0.12);
+}
+
+.signal-be-box strong,
+.signal-be-box small {
+    display: block;
+    margin-top: 3px;
+    color: var(--text-primary);
+}
+
+.signal-layer-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.signal-layer-row span {
+    padding: 5px 8px;
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: rgba(148, 163, 184, 0.10);
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.signal-layer-row span.on {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.12);
+}
+
+.signal-realtime-card p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
 /* ========================================
    GRID PRINCIPAL
    ======================================== */
@@ -636,9 +1035,10 @@
 
 .live-grid {
     display: grid;
-    grid-template-columns: minmax(0, 2.2fr) minmax(360px, 0.9fr);
+    grid-template-columns: minmax(0, 2.25fr) minmax(340px, 0.9fr);
     gap: 14px;
-    min-height: 720px;
+    min-height: 680px;
+    align-items: start;
 }
 
 .live-chart-panel {
@@ -647,11 +1047,14 @@
     gap: 12px;
     padding: 14px;
     min-width: 0;
+    height: 680px;
+    min-height: 680px;
 }
 
 .live-chart {
-    flex: 1;
-    min-height: 620px;
+    flex: 0 0 560px;
+    height: 560px;
+    min-height: 560px;
     width: 100%;
     filter: saturate(1.08) contrast(1.04);
 }
@@ -1454,6 +1857,24 @@
     .info-display {
         flex-direction: column;
     }
+
+    .trading-hours-header {
+        min-height: 76px;
+        padding: 14px;
+    }
+
+    .trading-hours-body {
+        margin: 0 10px 10px;
+        padding: 16px;
+    }
+
+    .trading-hours-title-row {
+        flex-direction: column;
+    }
+
+    .trading-hours-grid {
+        grid-template-columns: repeat(4, minmax(50px, 1fr));
+    }
     
     .main-grid {
         gap: 8px;
@@ -2089,6 +2510,10 @@
     .main-grid,
     .live-grid {
         grid-template-columns: 1fr;
+    }
+
+    .trading-hours-grid {
+        grid-template-columns: repeat(8, minmax(46px, 1fr));
     }
 
     .chart-section-pro,
@@ -2834,16 +3259,20 @@ select option {
 }
 
 .live-grid {
-    grid-template-columns: minmax(0, 2.45fr) minmax(360px, 0.88fr);
+    grid-template-columns: minmax(0, 2.25fr) minmax(340px, 0.9fr);
     gap: 14px;
+    align-items: start;
 }
 
 .live-chart-panel {
-    min-height: 74vh;
+    height: 680px;
+    min-height: 680px;
 }
 
 .live-chart {
-    min-height: 660px;
+    flex: 0 0 560px;
+    height: 560px;
+    min-height: 560px;
     border-radius: 8px;
     border-color: rgba(56, 189, 248, 0.20);
     background: linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(3, 7, 18, 0.96));
@@ -3031,7 +3460,8 @@ select option {
     }
 
     .live-chart-panel {
-        min-height: 620px;
+        height: auto;
+        min-height: 560px;
     }
 }
 
@@ -3056,6 +3486,7 @@ select option {
     }
 
     .live-chart {
-        min-height: 500px;
+        height: 460px;
+        min-height: 460px;
     }
 }

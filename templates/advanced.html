@@ -67,6 +67,34 @@
         </div>
     </div>
 
+    <section class="trading-hours-card is-open" id="tradingHoursCard">
+        <button class="trading-hours-header" id="tradingHoursToggle" type="button">
+            <span class="trading-hours-icon"><i class="fas fa-fire"></i></span>
+            <span>
+                <strong>Heatmap</strong>
+                <small>Melhores horarios para operar</small>
+            </span>
+            <i class="fas fa-chevron-right"></i>
+        </button>
+        <div class="trading-hours-body" id="tradingHoursBody">
+            <div class="trading-hours-title-row">
+                <div>
+                    <h3 id="tradingHoursAsset">--</h3>
+                    <p id="tradingHoursTimezone">Horarios no seu fuso</p>
+                </div>
+                <div class="trading-hours-legend">
+                    <span><i class="now"></i>Agora</span>
+                    <span><i class="excellent"></i>Excelente</span>
+                    <span><i class="high"></i>Alta</span>
+                    <span><i class="medium"></i>Media</span>
+                    <span><i class="low"></i>Baixa</span>
+                </div>
+            </div>
+            <div class="trading-hours-grid" id="tradingHoursGrid"></div>
+            <div class="trading-hours-note" id="tradingHoursNote">Selecionando ativo...</div>
+        </div>
+    </section>
+
     <div class="signal-strip">
         <div class="signal-pill signal-buy">
             <span>COMPRA</span>
@@ -434,9 +462,9 @@
 
 {% block extra_js %}
 <script src="https://unpkg.com/lightweight-charts@3/dist/lightweight-charts.standalone.production.js"></script>
-<script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>
-<script src="{{ url_for('static', filename='js/market-data-engine.js') }}"></script>
-<script src="{{ url_for('static', filename='js/websocket-engine.js') }}"></script>
-<script src="{{ url_for('static', filename='js/advanced-dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}?v=20260512-4"></script>
+<script src="{{ url_for('static', filename='js/chart-engine.js') }}?v=20260512-4"></script>
+<script src="{{ url_for('static', filename='js/market-data-engine.js') }}?v=20260512-4"></script>
+<script src="{{ url_for('static', filename='js/websocket-engine.js') }}?v=20260512-4"></script>
+<script src="{{ url_for('static', filename='js/advanced-dashboard.js') }}?v=20260512-4"></script>
 {% endblock %}

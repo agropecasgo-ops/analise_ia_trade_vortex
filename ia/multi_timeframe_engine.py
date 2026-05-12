@@ -8,10 +8,10 @@ from typing import Any
 
 
 INSTITUTIONAL_TIMEFRAMES = {
-    "4h": "macro_direction",
-    "1h": "main_structure",
-    "15m": "operational_setup",
-    "5m": "entry_timing",
+    "1h": "context",
+    "15m": "structure",
+    "5m": "setup",
+    "1m": "timing",
 }
 
 
@@ -40,7 +40,7 @@ def build_institutional_mtf_context(analysis: dict[str, Any] | None, confluence:
         "layers": layers,
         "alignment_score": min(100, alignment_score),
         "confirmed": alignment_score >= 75,
-        "required_alignment": "4H direcao, 1H estrutura, 15M setup, 5M timing",
+        "required_alignment": "1H contexto, 15M estrutura, 5M setup, 1M timing",
         "narrative": _narrative(dominant, layers, alignment_score),
         **confluence,
     }

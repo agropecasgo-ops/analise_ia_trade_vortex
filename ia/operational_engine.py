@@ -11,6 +11,8 @@ from .signal_engine import build_signal_snapshot
 
 def build_operational_panel(status: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     signal = build_signal_snapshot(status, context)
+    candle_panel = status.get("candle_panel") or (status.get("candle_reading") or {}).get("panel", {})
+    candle_reading = status.get("candle_reading") or {}
     return {
         "asset": status.get("symbol"),
         "timeframe": status.get("timeframe"),
@@ -31,6 +33,13 @@ def build_operational_panel(status: dict[str, Any], context: dict[str, Any]) -> 
         "pressure": context.get("pressure"),
         "last_bos": context.get("last_bos"),
         "last_choch": context.get("last_choch"),
+        "current_candle": candle_panel.get("current_candle"),
+        "candle_sequence": candle_panel.get("sequence"),
+        "active_confluences": candle_panel.get("active_confluences", []),
+        "entry_reason": candle_panel.get("entry_reason") or signal["summary"],
+        "wait_reason": candle_panel.get("wait_reason"),
+        "candle_score": candle_reading.get("score"),
+        "candle_confidence": candle_reading.get("confidence"),
         "summary": signal["summary"],
     }
 

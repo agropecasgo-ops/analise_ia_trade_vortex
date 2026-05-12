@@ -1,49 +1,149 @@
 """
-Gerenciamento de Sinais IA em Tempo Real.
+Sinais IA em Tempo Real.
+
+The live signal stack consumes the layered AI engine output and keeps a local
+repository of active/finalized signals, including automatic break even updates.
 """
 
-from datetime import datetime, timedelta, timezone
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
 
 DISCLAIMER = "Analise educativa. Nao constitui recomendacao financeira. Toda operacao envolve risco."
 
+STATUS_WAITING = "Aguardando entrada"
+STATUS_TRIGGERED = "Entrada acionada"
+STATUS_RUNNING = "Em andamento"
+STATUS_BE = "Break Even ativado"
+STATUS_TP1 = "Alvo 1 atingido"
+STATUS_TP2 = "Alvo 2 atingido"
+STATUS_FINAL = "Alvo final atingido"
+STATUS_STOP = "Stop atingido"
+STATUS_CANCELED = "Cancelado"
 
-class LiveSignalManager:
-    def __init__(self, min_score=78, min_rr=1.5, min_confidence=70):
-        self.min_score = min_score
-        self.min_rr = min_rr
-        self.min_confidence = min_confidence
-        self.active = {}
-        self.history = []
+FINAL_STATUSES = {STATUS_FINAL, STATUS_STOP, STATUS_CANCELED}
 
-    def update_from_live_status(self, live_status, market_meta=None, mtf_confluence=None):
-        market_meta = market_meta or {}
-        mtf_confluence = mtf_confluence or {}
-        key = self._key(live_status)
-        current_price = float(live_status.get("current_price") or 0)
 
-        signal = self.active.get(key)
-        if signal:
-            self._update_existing(signal, live_status, current_price)
-            if signal["status"] in ["invalidated", "stopped", "tp3_hit", "closed"]:
-                self._archive_signal(signal)
-            return signal
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-        if not self._should_create(live_status, mtf_confluence):
-            return self._waiting_payload(live_status, market_meta)
 
-        signal = self._create_signal(live_status, market_meta, mtf_confluence)
-        self.active[key] = signal
+def _num(value: Any, default: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number == number else default
+
+
+class SignalScoreService:
+    def allowed(self, live_status: dict[str, Any]) -> tuple[bool, list[str]]:
+        layered = live_status.get("layered_signal") or {}
+        signal = layered.get("signal") or {}
+        score = _num((layered.get("ai_score") or {}).get("score"), _num(live_status.get("confluence_score")))
+        reasons = []
+        if not signal.get("generated"):
+            reasons.append(signal.get("reason") or "Engine por camadas nao gerou sinal.")
+        if score < 80:
+            reasons.append(f"Score {score:.0f} abaixo do minimo 80.")
+        if live_status.get("state") not in ["BUY_CONFIRMED", "SELL_CONFIRMED"]:
+            reasons.append("Sem confirmacao final das camadas.")
+        if live_status.get("layered_signal", {}).get("macro_context", {}).get("blocked"):
+            reasons.extend(live_status["layered_signal"]["macro_context"].get("blockers", []))
+        if live_status.get("layered_signal", {}).get("confirmation", {}).get("blockers"):
+            reasons.extend(live_status["layered_signal"]["confirmation"].get("blockers", []))
+        return not reasons, list(dict.fromkeys(reasons))
+
+
+class SignalRiskManager:
+    def build(self, signal: dict[str, Any]) -> dict[str, Any]:
+        direction = signal.get("direction_code")
+        entry = _num(signal.get("entry_price"))
+        stop = _num(signal.get("stop_loss"))
+        tp1 = _num(signal.get("take_profit_1"))
+        tp2 = _num(signal.get("take_profit_2"))
+        final = _num(signal.get("take_profit_2"), tp2)
+        risk = abs(entry - stop)
+        reward = abs(tp1 - entry)
+        rr = reward / max(risk, 0.00000001)
+        protected_offset = risk * 0.03
+        if direction == "BUY":
+            trigger = entry + 0.7 * (final - entry)
+            new_stop = entry + protected_offset
+        else:
+            trigger = entry - 0.7 * (entry - final)
+            new_stop = entry - protected_offset
+        return {
+            "entryPrice": round(entry, 8),
+            "stopLoss": round(stop, 8),
+            "takeProfit1": round(tp1, 8),
+            "takeProfit2": round(tp2, 8),
+            "takeProfitFinal": round(final, 8),
+            "riskReward": round(rr, 2),
+            "breakEven": {
+                "enabled": False,
+                "triggerPrice": round(trigger, 8),
+                "newStopLoss": round(new_stop, 8),
+                "activatedAt": None,
+            },
+        }
+
+
+class BreakEvenManager:
+    def update(self, signal: dict[str, Any], current_price: float) -> bool:
+        be = signal.get("breakEven") or {}
+        if be.get("enabled"):
+            return False
+        direction = signal.get("direction")
+        trigger = _num(be.get("triggerPrice"))
+        reached = (direction == "BUY" and current_price >= trigger) or (direction == "SELL" and current_price <= trigger)
+        if not reached:
+            return False
+        be["enabled"] = True
+        be["activatedAt"] = _now()
+        signal["breakEven"] = be
+        signal["stopLoss"] = be.get("newStopLoss")
+        signal["stop_loss"] = be.get("newStopLoss")
+        signal["status"] = STATUS_BE
+        self._event(signal, STATUS_BE, current_price)
+        return True
+
+    def _event(self, signal: dict[str, Any], status: str, price: float) -> None:
+        signal.setdefault("history", []).append({"status": status, "price": round(price, 8), "at": _now()})
+
+
+class SignalRepository:
+    def __init__(self) -> None:
+        self.active: dict[str, dict[str, Any]] = {}
+        self.history: list[dict[str, Any]] = []
+
+    def duplicate_key(self, signal: dict[str, Any]) -> str:
+        zone = round(_num(signal.get("entryPrice")), 4)
+        return f"{signal.get('asset')}:{signal.get('timeframe')}:{signal.get('direction')}:{zone}"
+
+    def save(self, signal: dict[str, Any]) -> dict[str, Any]:
+        self.active[self.duplicate_key(signal)] = signal
         return signal
 
-    def list_active(self):
-        return sorted(self.active.values(), key=lambda item: item["timestamp"], reverse=True)
+    def find_duplicate(self, signal: dict[str, Any]) -> dict[str, Any] | None:
+        return self.active.get(self.duplicate_key(signal))
 
-    def list_history(self, limit=100):
+    def list_active(self) -> list[dict[str, Any]]:
+        return sorted(self.active.values(), key=lambda item: item["createdAt"], reverse=True)
+
+    def list_history(self, limit: int = 100) -> list[dict[str, Any]]:
         return self.history[-limit:][::-1]
 
-    def stats(self):
+    def finalize(self, key: str, signal: dict[str, Any]) -> None:
+        if key in self.active:
+            self.active.pop(key, None)
+        signal["closedAt"] = _now()
+        self.history.append(signal.copy())
+
+    def stats(self) -> dict[str, Any]:
         return {
             "active_count": len(self.active),
             "history_count": len(self.history),
@@ -51,159 +151,186 @@ class LiveSignalManager:
             "open_sell": sum(1 for item in self.active.values() if item["direction"] == "SELL"),
         }
 
-    def _should_create(self, status, mtf):
-        direction = status.get("probable_direction")
-        score = float(status.get("confluence_score") or 0)
-        confidence = float(status.get("confidence") or 0)
-        rr = float(status.get("risk_reward") or 0)
-        state = status.get("state")
-        volume_signal = status.get("volume", {}).get("signal")
-        smc_score = float(status.get("smc", {}).get("score") or 0)
-        trend = status.get("technical", {}).get("trend", {}).get("direction", "")
-        mtf_ok = mtf.get("strong_signal_allowed", True)
 
-        volume_aligned = (
-            (direction == "BUY" and volume_signal == "BULLISH_VOLUME")
-            or (direction == "SELL" and volume_signal == "BEARISH_VOLUME")
-        )
+class SignalEngine:
+    def __init__(self, repository: SignalRepository | None = None) -> None:
+        self.repository = repository or SignalRepository()
+        self.score_service = SignalScoreService()
+        self.risk = SignalRiskManager()
+        self.break_even = BreakEvenManager()
 
-        return (
-            direction in ["BUY", "SELL"]
-            and state in ["BUY_CONFIRMED", "SELL_CONFIRMED", "AGGRESSIVE_ENTRY"]
-            and score >= self.min_score
-            and confidence >= self.min_confidence
-            and rr >= self.min_rr
-            and volume_aligned
-            and smc_score >= 60
-            and trend in ["STRONG_BULLISH", "STRONG_BEARISH", "BULLISH", "BEARISH"]
-            and mtf_ok
-            and not status.get("smc", {}).get("false_breakout", {}).get("detected")
-        )
+    def update_from_live_status(self, live_status: dict[str, Any], market_meta=None, mtf_confluence=None) -> dict[str, Any]:
+        market_meta = market_meta or {}
+        layered = live_status.get("layered_signal") or {}
+        raw_signal = layered.get("signal") or {}
+        current_price = _num(live_status.get("current_price"))
 
-    def _create_signal(self, status, market_meta, mtf):
-        now = datetime.now(timezone.utc)
-        direction = status.get("probable_direction", "WAIT")
-        entry = status.get("entry_aggressive") or status.get("current_price")
+        for key, signal in list(self.repository.active.items()):
+            if signal.get("asset") == live_status.get("symbol") and signal.get("timeframe") == live_status.get("timeframe"):
+                self.update_price(signal, current_price, key)
+                return signal
+
+        allowed, blockers = self.score_service.allowed(live_status)
+        if not allowed:
+            return self.waiting_payload(live_status, blockers)
+
+        signal = self.create_signal(live_status, raw_signal, market_meta)
+        duplicate = self.repository.find_duplicate(signal)
+        if duplicate:
+            self.update_price(duplicate, current_price, self.repository.duplicate_key(duplicate))
+            return duplicate
+        return self.repository.save(signal)
+
+    def create_signal(self, live_status: dict[str, Any], raw_signal: dict[str, Any], market_meta=None) -> dict[str, Any]:
+        risk = self.risk.build(raw_signal)
+        layered = live_status.get("layered_signal") or {}
+        ai_score = layered.get("ai_score") or {}
+        reasons = [raw_signal.get("reason") or live_status.get("reason")]
+        reasons.extend(live_status.get("confirmations") or [])
         signal = {
-            "id": uuid4().hex[:12],
-            "asset": status.get("symbol"),
-            "symbol": status.get("symbol"),
-            "market": market_meta.get("market") or status.get("market"),
-            "market_label": market_meta.get("market_label") or status.get("market_label"),
-            "timeframe": status.get("timeframe"),
-            "direction": direction,
-            "entry": entry,
-            "entry_aggressive": status.get("entry_aggressive") or entry,
-            "entry_conservative": status.get("entry_conservative"),
-            "stop_loss": status.get("stop_loss"),
-            "take_profit_1": status.get("take_profit"),
-            "take_profit_2": status.get("take_profit_2"),
-            "take_profit_3": status.get("take_profit_3"),
-            "risk_reward": status.get("risk_reward"),
-            "confluence_score": status.get("confluence_score"),
-            "confidence": status.get("confidence"),
-            "status": "active",
-            "timestamp": now.isoformat(),
-            "expires_at": (now + timedelta(hours=6)).isoformat(),
-            "technical_reason": status.get("reason"),
-            "confirmations": status.get("confirmations", []),
-            "invalidations": status.get("invalidations", []),
-            "explanation": self._explanation(status),
-            "partial_result": "0.00%",
-            "last_price": status.get("current_price"),
-            "mtf_aligned": bool(mtf.get("strong_signal_allowed", True)),
-            "alerts": ["signal_created", direction.lower()],
+            "id": uuid4().hex,
+            "asset": live_status.get("symbol"),
+            "symbol": live_status.get("symbol"),
+            "direction": raw_signal.get("direction_code"),
+            "signalStrength": int(_num(ai_score.get("score"), live_status.get("confluence_score"))),
+            "entryPrice": risk["entryPrice"],
+            "stopLoss": risk["stopLoss"],
+            "takeProfit1": risk["takeProfit1"],
+            "takeProfit2": risk["takeProfit2"],
+            "takeProfitFinal": risk["takeProfitFinal"],
+            "riskReward": risk["riskReward"],
+            "status": STATUS_WAITING,
+            "reasons": [item for item in dict.fromkeys(reasons) if item],
+            "timeframe": live_status.get("timeframe"),
+            "createdAt": _now(),
+            "breakEven": risk["breakEven"],
+            "layers": {
+                "macroContext": not (layered.get("macro_context") or {}).get("blocked", True),
+                "marketStructure": bool((layered.get("market_structure") or {}).get("valid")),
+                "confirmation": bool((layered.get("confirmation") or {}).get("valid")),
+                "aiScore": int(_num(ai_score.get("score"), live_status.get("confluence_score"))),
+            },
+            "market": (market_meta or {}).get("market") or live_status.get("market"),
+            "lastPrice": live_status.get("current_price"),
+            "history": [{"status": STATUS_WAITING, "price": live_status.get("current_price"), "at": _now()}],
             "disclaimer": DISCLAIMER,
         }
+        signal.update({
+            "entry": signal["entryPrice"],
+            "entry_aggressive": signal["entryPrice"],
+            "entry_conservative": signal["entryPrice"],
+            "stop_loss": signal["stopLoss"],
+            "take_profit_1": signal["takeProfit1"],
+            "take_profit_2": signal["takeProfit2"],
+            "take_profit_3": signal["takeProfitFinal"],
+            "risk_reward": signal["riskReward"],
+            "confluence_score": signal["signalStrength"],
+            "confidence": signal["signalStrength"],
+            "timestamp": signal["createdAt"],
+            "technical_reason": signal["reasons"][0] if signal["reasons"] else "",
+            "explanation": " ".join(signal["reasons"][:3]),
+            "partial_result": "0.00%",
+        })
+        self.update_price(signal, _num(live_status.get("current_price")), None)
         return signal
 
-    def _update_existing(self, signal, status, current_price):
-        signal["last_price"] = current_price
-        signal["confluence_score"] = status.get("confluence_score", signal["confluence_score"])
-        signal["confidence"] = status.get("confidence", signal["confidence"])
-        signal["confirmations"] = status.get("confirmations", signal.get("confirmations", []))
-        signal["invalidations"] = status.get("invalidations", signal.get("invalidations", []))
-        signal["technical_reason"] = status.get("reason", signal.get("technical_reason"))
+    def update_price(self, signal: dict[str, Any], current_price: float, key: str | None = None) -> dict[str, Any]:
+        if not current_price:
+            return signal
+        signal["lastPrice"] = round(current_price, 8)
+        if signal["status"] in FINAL_STATUSES:
+            return signal
+
+        direction = signal.get("direction")
+        entry = _num(signal.get("entryPrice"))
+        stop = _num(signal.get("stopLoss"))
+        tp1 = _num(signal.get("takeProfit1"))
+        tp2 = _num(signal.get("takeProfit2"))
+        final = _num(signal.get("takeProfitFinal"))
+
+        if signal["status"] == STATUS_WAITING:
+            triggered = (direction == "BUY" and current_price >= entry) or (direction == "SELL" and current_price <= entry)
+            if triggered:
+                signal["status"] = STATUS_TRIGGERED
+                self._event(signal, STATUS_TRIGGERED, current_price)
         signal["partial_result"] = self._partial_result(signal, current_price)
-        signal["alerts"] = []
 
-        if status.get("state") in ["INVALIDATED", "HIGH_RISK"] or status.get("smc", {}).get("false_breakout", {}).get("detected"):
-            signal["status"] = "invalidated"
-            signal["alerts"].append("signal_invalidated")
-            return
-
-        direction = signal["direction"]
-        stop = float(signal.get("stop_loss") or 0)
-        tp1 = float(signal.get("take_profit_1") or 0)
-        tp2 = float(signal.get("take_profit_2") or 0)
-        tp3 = float(signal.get("take_profit_3") or 0)
+        self.break_even.update(signal, current_price)
 
         if direction == "BUY":
             if stop and current_price <= stop:
-                signal["status"] = "stopped"
-            elif tp3 and current_price >= tp3:
-                signal["status"] = "tp3_hit"
+                self._finish(signal, STATUS_STOP, current_price, key)
+            elif final and current_price >= final:
+                self._finish(signal, STATUS_FINAL, current_price, key)
             elif tp2 and current_price >= tp2:
-                signal["status"] = "tp2_hit"
+                self._status(signal, STATUS_TP2, current_price)
             elif tp1 and current_price >= tp1:
-                signal["status"] = "tp1_hit"
-            else:
-                signal["status"] = "confirmed" if status.get("state") == "BUY_CONFIRMED" else "active"
+                self._status(signal, STATUS_TP1, current_price)
+            elif signal["status"] == STATUS_TRIGGERED:
+                self._status(signal, STATUS_RUNNING, current_price)
         elif direction == "SELL":
             if stop and current_price >= stop:
-                signal["status"] = "stopped"
-            elif tp3 and current_price <= tp3:
-                signal["status"] = "tp3_hit"
+                self._finish(signal, STATUS_STOP, current_price, key)
+            elif final and current_price <= final:
+                self._finish(signal, STATUS_FINAL, current_price, key)
             elif tp2 and current_price <= tp2:
-                signal["status"] = "tp2_hit"
+                self._status(signal, STATUS_TP2, current_price)
             elif tp1 and current_price <= tp1:
-                signal["status"] = "tp1_hit"
-            else:
-                signal["status"] = "confirmed" if status.get("state") == "SELL_CONFIRMED" else "active"
+                self._status(signal, STATUS_TP1, current_price)
+            elif signal["status"] == STATUS_TRIGGERED:
+                self._status(signal, STATUS_RUNNING, current_price)
+        return signal
 
-        if signal["status"] in ["tp1_hit", "tp2_hit", "tp3_hit", "stopped"]:
-            signal["alerts"].append(signal["status"])
-
-    def _waiting_payload(self, status, market_meta):
+    def waiting_payload(self, live_status: dict[str, Any], blockers: list[str]) -> dict[str, Any]:
         return {
             "id": None,
-            "asset": status.get("symbol"),
-            "symbol": status.get("symbol"),
-            "market": market_meta.get("market") or status.get("market"),
-            "timeframe": status.get("timeframe"),
-            "direction": "WAIT" if status.get("probable_direction") == "NEUTRAL" else status.get("probable_direction", "WAIT"),
+            "asset": live_status.get("symbol"),
+            "symbol": live_status.get("symbol"),
+            "direction": live_status.get("probable_direction", "NEUTRAL"),
+            "signalStrength": int(_num(live_status.get("confluence_score"))),
+            "confluence_score": int(_num(live_status.get("confluence_score"))),
+            "confidence": int(_num(live_status.get("confidence"))),
             "status": "waiting_confirmation",
-            "confluence_score": status.get("confluence_score", 0),
-            "confidence": status.get("confidence", 0),
-            "technical_reason": status.get("reason", "Aguardando confluencia forte."),
-            "confirmations": status.get("confirmations", []),
-            "invalidations": status.get("invalidations", []),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "reasons": blockers[:8] or ["Aguardando confluencia forte."],
+            "technical_reason": (blockers[:1] or ["Aguardando confluencia forte."])[0],
+            "explanation": " ".join(blockers[:3] or ["Aguardando confluencia forte."]),
+            "timeframe": live_status.get("timeframe"),
+            "createdAt": _now(),
+            "timestamp": _now(),
+            "layers": (live_status.get("layered_signal") or {}).get("ai_score", {}),
             "disclaimer": DISCLAIMER,
         }
 
-    def _partial_result(self, signal, price):
-        entry = float(signal.get("entry") or 0)
+    def list_active(self) -> list[dict[str, Any]]:
+        return self.repository.list_active()
+
+    def list_history(self, limit=100) -> list[dict[str, Any]]:
+        return self.repository.list_history(limit)
+
+    def stats(self) -> dict[str, Any]:
+        return self.repository.stats()
+
+    def _status(self, signal: dict[str, Any], status: str, price: float) -> None:
+        if signal.get("status") == status:
+            return
+        signal["status"] = status
+        self._event(signal, status, price)
+
+    def _finish(self, signal: dict[str, Any], status: str, price: float, key: str | None) -> None:
+        self._status(signal, status, price)
+        if key:
+            self.repository.finalize(key, signal)
+
+    def _event(self, signal: dict[str, Any], status: str, price: float) -> None:
+        signal.setdefault("history", []).append({"status": status, "price": round(price, 8), "at": _now()})
+
+    def _partial_result(self, signal: dict[str, Any], price: float) -> str:
+        entry = _num(signal.get("entryPrice"))
         if not entry:
             return "0.00%"
-        if signal["direction"] == "SELL":
-            value = (entry - price) / entry * 100
-        else:
-            value = (price - entry) / entry * 100
+        value = (entry - price) / entry * 100 if signal.get("direction") == "SELL" else (price - entry) / entry * 100
         return f"{value:.2f}%"
 
-    def _archive_signal(self, signal):
-        if signal.get("archived"):
-            return
-        signal["closed_at"] = datetime.now(timezone.utc).isoformat()
-        signal["archived"] = True
-        self.history.append(signal.copy())
 
-    def _key(self, status):
-        return f"{status.get('symbol')}:{status.get('timeframe')}"
-
-    def _explanation(self, status):
-        confirmations = status.get("confirmations", [])[:4]
-        if confirmations:
-            return " + ".join(confirmations)
-        return status.get("reason") or "Confluencia operacional forte detectada pela IA."
+class LiveSignalManager(SignalEngine):
+    pass

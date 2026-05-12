@@ -3,9 +3,9 @@
         symbol: 'BTCUSDT',
         timeframe: '15m',
         market: 'crypto',
+        chartEngine: null,
         chart: null,
         candleSeries: null,
-        zoneLines: [],
         controller: null,
         assetsByMarket: {},
         liveTimer: null,
@@ -67,47 +67,23 @@
     }
 
     function initChart() {
-        const container = $('operacionalChart');
-        if (!container || !window.LightweightCharts) return;
-        state.chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: Math.max(520, container.clientHeight || 520),
-            layout: {
-                background: { color: '#050505' },
-                textColor: '#F8FAFC',
+        state.chartEngine = new window.LiveChartEngine('operacionalChart', {
+            minHeight: 520,
+            watermark: {
+                visible: true,
+                text: 'Leitura Grafica Operacional',
+                color: 'rgba(212, 175, 55, 0.12)',
+                fontSize: 16,
+                horzAlign: 'right',
+                vertAlign: 'bottom',
             },
-            grid: {
-                vertLines: { color: 'rgba(212, 175, 55, 0.07)' },
-                horzLines: { color: 'rgba(255, 255, 255, 0.045)' },
-            },
-            rightPriceScale: {
-                borderColor: 'rgba(212, 175, 55, 0.18)',
-            },
-            timeScale: {
-                borderColor: 'rgba(212, 175, 55, 0.18)',
-                timeVisible: true,
-            },
-            crosshair: {
-                mode: LightweightCharts.CrosshairMode.Normal,
-            },
-        });
-        state.candleSeries = state.chart.addCandlestickSeries({
-            upColor: '#22C55E',
-            downColor: '#EF4444',
-            borderUpColor: '#22C55E',
-            borderDownColor: '#EF4444',
-            wickUpColor: '#22C55E',
-            wickDownColor: '#EF4444',
-        });
+        }).init();
+        state.chart = state.chartEngine?.chart;
+        state.candleSeries = state.chartEngine?.candleSeries;
     }
 
     function resizeChart() {
-        const container = $('operacionalChart');
-        if (!state.chart || !container) return;
-        state.chart.applyOptions({
-            width: container.clientWidth,
-            height: Math.max(480, container.clientHeight || 520),
-        });
+        state.chartEngine?.resize();
     }
 
     async function refreshAll() {
@@ -141,9 +117,8 @@
     }
 
     function renderChart(data) {
-        if (!data?.candles?.length || !state.candleSeries) return;
-        state.candleSeries.setData(data.candles);
-        state.chart?.timeScale().fitContent();
+        if (!data?.candles?.length || !state.chartEngine) return;
+        state.chartEngine.setData(data.candles, data.volumes || [], true);
         setText('opSymbol', data.symbol || state.symbol);
         setText('opMarket', data.market_label || data.market || '--');
         setText('opSource', data.source || '--');
@@ -181,7 +156,7 @@
         renderLiveFeed(data.operacional_live || []);
         renderOperationalSignal(opSignal);
         const markers = window.VisualAIOverlays?.buildOperationalMarkers(candlePayload?.candles || [], data) || [];
-        window.VisualAIOverlays?.set(state.candleSeries, [], markers);
+        state.chartEngine?.applyMarkers(markers);
         renderZoneLines(opChart.price_lines || [], data.operacional_zones || {}, candlePayload?.candles || []);
         updateContextState(opContext);
     }
@@ -301,30 +276,19 @@
     }
 
     function renderZoneLines(markLines, zones, candles) {
-        if (!state.candleSeries || !candles.length) return;
-        state.zoneLines.forEach((line) => state.candleSeries.removePriceLine(line));
-        state.zoneLines = [];
+        if (!state.chartEngine || !candles.length) return;
         const lines = Array.isArray(markLines) && markLines.length ? markLines : [
             ['Suporte', zones.support, '#22C55E'],
             ['Resistencia', zones.resistance, '#EF4444'],
             ['Liquidez sup.', zones.upper_liquidity, '#D4AF37'],
             ['Liquidez inf.', zones.lower_liquidity, '#38BDF8'],
         ].map(([label, price, color]) => ({ label, price, color }));
-        lines.forEach((line) => {
-            const title = line.label;
-            const price = line.price;
-            const color = line.color;
-            if (Number.isFinite(Number(price))) {
-                state.zoneLines.push(state.candleSeries.createPriceLine({
-                    price: Number(price),
-                    color,
-                    lineWidth: 1,
-                    lineStyle: LightweightCharts.LineStyle.Dashed,
-                    axisLabelVisible: true,
-                    title,
-                }));
-            }
-        });
+        state.chartEngine.applyLevels(lines.map((line) => ({
+            label: line.label,
+            price: line.price,
+            color: line.color,
+            lineWidth: line.type === 'entry' ? 2 : 1,
+        })));
     }
 
     function updateContextState(context) {

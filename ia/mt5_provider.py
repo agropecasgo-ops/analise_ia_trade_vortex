@@ -28,8 +28,12 @@ class MT5Provider:
     }
 
     SYMBOL_ALIASES = {
-        "WIN": ["WIN$N", "WIN$", "WIN"],
-        "WDO": ["WDO$N", "WDO$", "WDO"],
+        "WIN": ["WIN$N", "WIN$", "WIN1!", "WIN1", "WIN"],
+        "WIN1!": ["WIN$N", "WIN$", "WIN1!", "WIN1", "WIN"],
+        "WIN1": ["WIN$N", "WIN$", "WIN1!", "WIN1", "WIN"],
+        "WDO": ["WDO$N", "WDO$", "WDO1!", "WDO1", "WDO"],
+        "WDO1!": ["WDO$N", "WDO$", "WDO1!", "WDO1", "WDO"],
+        "WDO1": ["WDO$N", "WDO$", "WDO1!", "WDO1", "WDO"],
         "GOLD": ["XAUUSD", "GOLD"],
         "XAUUSD": ["XAUUSD", "GOLD"],
         "WTI": ["WTI", "USOIL", "XTIUSD", "CL"],

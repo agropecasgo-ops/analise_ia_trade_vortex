@@ -14,6 +14,7 @@ import requests
 from .binance_client import BinanceMarketData
 from .bybit_provider import BybitMarketData
 from .mt5_provider import MT5Provider
+from .profit_rtd_provider import ProfitRTDProvider
 
 
 MARKETS = {
@@ -26,6 +27,7 @@ MARKETS = {
             {"symbol": "ETHUSDT", "name": "Ethereum / USDT"},
             {"symbol": "SOLUSDT", "name": "Solana / USDT"},
             {"symbol": "XRPUSDT", "name": "XRP / USDT"},
+            {"symbol": "BNBUSDT", "name": "BNB / USDT"},
             {"symbol": "DOGEUSDT", "name": "Dogecoin / USDT"},
         ],
     },
@@ -69,15 +71,16 @@ MARKETS = {
             {"symbol": "AUDUSD", "name": "Dolar australiano / Dolar"},
             {"symbol": "USDCAD", "name": "Dolar / Dolar canadense"},
             {"symbol": "USDCHF", "name": "Dolar / Franco suico"},
+            {"symbol": "XAUUSD", "name": "Ouro / Dolar"},
         ],
     },
     "futures_b3": {
         "label": "Futuros B3",
-        "source": "mt5",
+        "source": "profit_rtd",
         "streaming": True,
         "assets": [
-            {"symbol": "WIN", "name": "Mini Indice atual"},
-            {"symbol": "WDO", "name": "Mini Dolar atual"},
+            {"symbol": "WIN", "name": "Mini Indice atual", "tv_symbol": "BMFBOVESPA:WIN1!", "aliases": ["WIN1!", "WIN1"]},
+            {"symbol": "WDO", "name": "Mini Dolar atual", "tv_symbol": "BMFBOVESPA:WDO1!", "aliases": ["WDO1!", "WDO1"]},
         ],
     },
     "commodity": {
@@ -158,12 +161,19 @@ class MarketDataRouter:
         self.bybit = BybitMarketData(timeout=timeout)
         self.binance = BinanceMarketData(timeout=timeout)
         self.mt5 = MT5Provider()
+        self.profit_rtd = ProfitRTDProvider()
         self.session = requests.Session()
         self.timeout = timeout
         self._last_meta = {}
 
     def normalize_symbol(self, symbol):
         value = (symbol or "BTCUSDT").replace("-", "").replace("/", "").upper().strip()
+        if ":" in value:
+            value = value.split(":")[-1]
+        if value in {"WIN1!", "WIN1"}:
+            return "WIN"
+        if value in {"WDO1!", "WDO1"}:
+            return "WDO"
         return value or "BTCUSDT"
 
     def identify_market(self, symbol):
@@ -175,7 +185,7 @@ class MarketDataRouter:
             return "br_stock"
         if symbol.endswith("USDT"):
             return "crypto"
-        if symbol in {"WIN", "WDO"}:
+        if symbol.startswith(("WIN", "WDO")):
             return "futures_b3"
         if len(symbol) == 6 and symbol.isalpha():
             return "forex"
@@ -207,7 +217,9 @@ class MarketDataRouter:
         limit = max(60, min(int(limit or 500), 1000))
         if market == "crypto":
             return self._crypto_klines(symbol, interval, limit, market)
-        if market in {"forex", "futures_b3", "commodity", "index"}:
+        if market == "futures_b3":
+            return self._profit_or_mt5_klines(symbol, interval, limit, market)
+        if market in {"forex", "commodity", "index"}:
             return self._mt5_or_yahoo_klines(symbol, interval, limit, market)
         return self._yahoo_klines(symbol, interval, limit, market)
 
@@ -223,6 +235,21 @@ class MarketDataRouter:
                 self._set_meta(symbol, market, "binance", "open", "Bybit indisponivel; usando Binance fallback.", 0, True, True)
             ticker.update(self.last_meta(symbol))
             return ticker
+        if market == "futures_b3":
+            try:
+                ticker = self.profit_rtd.get_24h_ticker(symbol)
+                tick = self.profit_rtd.get_tick(symbol)
+                self._set_meta(symbol, market, "profit_rtd", "open", "Dados em tempo real via Profit RTD; candles sao agregados localmente.", 0, True, False, tick)
+                ticker.update(self.last_meta(symbol))
+                return ticker
+            except Exception as profit_error:
+                try:
+                    ticker = self.mt5.get_24h_ticker(symbol)
+                    self._set_meta(symbol, market, "mt5", self._market_status(None, "1m", market), f"Profit RTD indisponivel; usando MT5. {profit_error}", 0, True, True, self._safe_tick(symbol))
+                    ticker.update(self.last_meta(symbol))
+                    return ticker
+                except Exception as mt5_error:
+                    self._set_meta(symbol, market, "profit_rtd", "no_data", f"Profit RTD e MT5 indisponiveis para {symbol}. Profit: {profit_error}. MT5: {mt5_error}", 0, False, False)
         if market in {"forex", "futures_b3", "commodity", "index"}:
             try:
                 ticker = self.mt5.get_24h_ticker(symbol)
@@ -251,6 +278,19 @@ class MarketDataRouter:
     def get_realtime_quote(self, symbol):
         symbol = self.normalize_symbol(symbol)
         market = self.identify_market(symbol)
+        if market == "futures_b3":
+            try:
+                tick = self.profit_rtd.get_tick(symbol)
+                self._set_meta(symbol, market, "profit_rtd", "open", "Dados em tempo real via Profit RTD.", 0, True, False, tick)
+                return {**tick, **self.last_meta(symbol)}
+            except Exception as profit_error:
+                try:
+                    tick = self.mt5.get_tick(symbol)
+                    self._set_meta(symbol, market, "mt5", self._market_status(None, "1m", market), f"Profit RTD indisponivel; usando MT5. {profit_error}", 0, True, True, tick)
+                    return {**tick, **self.last_meta(symbol)}
+                except Exception as mt5_error:
+                    self._set_meta(symbol, market, "profit_rtd", "no_data", f"Profit RTD e MT5 indisponiveis para {symbol}. Profit: {profit_error}. MT5: {mt5_error}", 0, False, False)
+                    raise mt5_error
         if market in {"forex", "futures_b3", "commodity", "index"}:
             tick = self.mt5.get_tick(symbol)
             self._set_meta(symbol, market, "mt5", self._market_status(None, "1m", market), None, 0, True, False, tick)
@@ -286,6 +326,25 @@ class MarketDataRouter:
             self._set_meta(symbol, market, "binance", "no_data", message, 0, False, fallback)
             raise error
 
+    def _profit_or_mt5_klines(self, symbol, interval, limit, market):
+        try:
+            df = self.profit_rtd.get_klines(symbol, interval, limit)
+            tick = self.profit_rtd.get_tick(symbol)
+            message = "Profit RTD conectado. Historico de candles e agregado localmente a partir dos ticks recebidos."
+            self._set_meta(symbol, market, "profit_rtd", self._market_status(df, interval, market), message, len(df), True, False, tick)
+            return df
+        except Exception as profit_error:
+            try:
+                df = self.mt5.get_klines(symbol, interval, limit)
+                tick = self._safe_tick(symbol)
+                message = f"Profit RTD indisponivel; usando MT5. {profit_error}"
+                self._set_meta(symbol, market, "mt5", self._market_status(df, interval, market), message, len(df), True, True, tick)
+                return df
+            except Exception as mt5_error:
+                message = f"Profit RTD e MT5 indisponiveis para {symbol}. Profit: {profit_error}. MT5: {mt5_error}"
+                self._set_meta(symbol, market, "profit_rtd", "no_data", message, 0, False, False)
+                raise ValueError(message) from mt5_error
+
     def _mt5_or_yahoo_klines(self, symbol, interval, limit, market):
         try:
             df = self.mt5.get_klines(symbol, interval, limit)
@@ -293,6 +352,10 @@ class MarketDataRouter:
             self._set_meta(symbol, market, "mt5", self._market_status(df, interval, market), None, len(df), True, False, tick)
             return df
         except Exception as error:
+            if market == "futures_b3":
+                message = f"MT5 indisponivel para {symbol}. Verifique se o contrato atual esta no Market Watch do MetaTrader 5. {error}"
+                self._set_meta(symbol, market, "mt5", "no_data", message, 0, False, False)
+                raise ValueError(message) from error
             message = f"MT5 indisponivel; usando Yahoo fallback. {error}"
             try:
                 df = self._yahoo_klines(symbol, interval, limit, market)

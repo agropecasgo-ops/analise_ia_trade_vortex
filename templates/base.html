@@ -12,8 +12,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/advanced.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260512-4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/advanced.css') }}?v=20260512-4">
     
     {% block extra_css %}{% endblock %}
 </head>
@@ -35,6 +35,14 @@
                     <i class="fas fa-bolt"></i>
                     <span>Live Trading IA</span>
                 </a>
+                <a href="{{ url_for('signals') }}" class="nav-item {% if request.path == '/signals' %}active{% endif %}" data-page="signals-realtime">
+                    <i class="fas fa-satellite-dish"></i>
+                    <span>Sinais IA em Tempo Real</span>
+                </a>
+                <a href="{{ url_for('advanced') }}#tradingHoursCard" class="nav-item" data-page="heatmap-hours">
+                    <i class="fas fa-fire"></i>
+                    <span>Heatmap Horários</span>
+                </a>
                 <a href="{{ url_for('operacional') }}" class="nav-item {% if request.path == '/operacional' %}active{% endif %}" data-page="operacional">
                     <i class="fas fa-chart-simple"></i>
                     <span>Operacional Leitura Gráfica</span>
@@ -50,22 +58,6 @@
                 <a href="{{ url_for('live') }}#signals" class="nav-item" data-page="sinais">
                     <i class="fas fa-bell"></i>
                     <span>Sinais IA</span>
-                </a>
-                <a href="{{ url_for('advanced') }}#backtest" class="nav-item" data-page="estratégias">
-                    <i class="fas fa-chess"></i>
-                    <span>Estratégias</span>
-                </a>
-                <a href="{{ url_for('live') }}#signals" class="nav-item" data-page="alertas">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <span>Alertas</span>
-                </a>
-                <a href="#" class="nav-item" data-page="carteira">
-                    <i class="fas fa-wallet"></i>
-                    <span>Carteira</span>
-                </a>
-                <a href="#" class="nav-item" data-page="configurações">
-                    <i class="fas fa-cog"></i>
-                    <span>Configurações</span>
                 </a>
             </nav>
             
@@ -124,7 +116,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     
     <!-- Custom JS -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=20260512-4"></script>
     
     {% block extra_js %}{% endblock %}
 </body>

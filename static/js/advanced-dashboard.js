@@ -68,6 +68,9 @@ class AdvancedDashboard {
         document.getElementById('btnAddWatch')?.addEventListener('click', () => this.addCurrentToWatchlist());
         document.getElementById('btnCreateAlert')?.addEventListener('click', () => this.createPriceAlert());
         document.querySelector('[data-chart-action="fit"]')?.addEventListener('click', () => this.chart?.timeScale().fitContent());
+        document.getElementById('tradingHoursToggle')?.addEventListener('click', () => {
+            document.getElementById('tradingHoursCard')?.classList.toggle('is-open');
+        });
         window.addEventListener('resize', () => this.resizeChart());
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission().catch(() => {});
@@ -161,7 +164,7 @@ class AdvancedDashboard {
             let analysis = this.createNeutralAnalysis(candles);
             this.updateAnalysisPanel(analysis, candles);
             this.loadAnalysisInBackground(candles, seq);
-            Promise.allSettled([this.updateMultiTimeframe(), this.updateHeatmap(), this.loadWatchlist(), this.loadAlerts()]);
+            Promise.allSettled([this.updateMultiTimeframe(), this.updateHeatmap(), this.updateTradingHours(), this.loadWatchlist(), this.loadAlerts()]);
             this.setConnectionState('Tempo real');
         } catch (error) {
             if (error.name === 'AbortError') return;
@@ -993,6 +996,31 @@ class AdvancedDashboard {
             confluenceCell.textContent = `${confluence.dominant_direction || '--'} ${confluence.confirmed_timeframes || 0}/${confluence.required_confirmations || 3}`;
             row.appendChild(confluenceCell);
             container.appendChild(row);
+        });
+    }
+
+    async updateTradingHours() {
+        const response = await fetch(`/api/trading-hours/${encodeURIComponent(this.currentAsset)}`);
+        const data = await response.json();
+        if (!data.success) return;
+        this.renderTradingHours(data);
+    }
+
+    renderTradingHours(data) {
+        const card = document.getElementById('tradingHoursCard');
+        const grid = document.getElementById('tradingHoursGrid');
+        if (!card || !grid) return;
+        card.classList.add('is-open');
+        this.setText('tradingHoursAsset', data.asset_label || data.symbol || this.currentAsset);
+        this.setText('tradingHoursTimezone', `Horarios no seu fuso (${data.timezone || 'BRT'})`);
+        this.setText('tradingHoursNote', data.summary || 'Use os horarios com maior liquidez e evite operar em periodos laterais.');
+        grid.innerHTML = '';
+        (data.hours || []).forEach((item) => {
+            const cell = document.createElement('div');
+            cell.className = `trading-hour-cell ${item.level || 'low'}${item.is_now ? ' is-now' : ''}`;
+            cell.innerHTML = `<span>${item.label}</span><small>${item.level_label}</small>`;
+            cell.title = `${item.label} - ${item.level_label} (${item.score || 0}/100)`;
+            grid.appendChild(cell);
         });
     }
 

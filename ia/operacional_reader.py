@@ -60,22 +60,23 @@ class OperacionalReader:
         pullback = self._pullback_context(zones, trend)
         liquidity = self._liquidity_context(zones, current)
         fib = self._fibonacci_context()
-        risk = self._risk_context(zones, trend, current, breakout)
-        confirmations, invalidations = self._confirmations(trend, current, breakout, pullback, liquidity, risk)
+        apostila = self._apostila_operacional_context(trend, zones, candle_flow, breakout, pullback, liquidity, fib)
+        risk = self._risk_context(zones, trend, current, breakout, apostila)
+        confirmations, invalidations = self._confirmations(trend, current, breakout, pullback, liquidity, risk, apostila)
         context = self._context_label(trend, current, breakout, pullback)
-        narrative = self._narrative(context, trend, current, breakout, pullback, liquidity, risk)
+        narrative = self._narrative(context, trend, current, breakout, pullback, liquidity, risk, apostila)
         recommendation = self._recommendation(context, confirmations, invalidations, risk)
-        score = self._operational_score(context, confirmations, invalidations, current, pullback, breakout, liquidity, risk)
+        score = self._operational_score(context, confirmations, invalidations, current, pullback, breakout, liquidity, risk, apostila)
         signal = self._signal_payload(context, trend, confirmations, invalidations, risk, score)
 
         operational_live = self._live_messages(context, trend, breakout, pullback, liquidity, signal)
-        operational_chart = self._chart_marks(zones, risk, breakout, pullback, liquidity)
+        operational_chart = self._chart_marks(zones, risk, breakout, pullback, liquidity, apostila)
 
         return {
             "success": True,
             "module": "operacional_leitura_grafica",
             "isolated": True,
-            "methodology": "dow_price_action_operacional",
+            "methodology": "apostila_operacional_dow_pullback_prior_cote_3_candles",
             "excluded_modules": [
                 "ema", "rsi", "macd", "bollinger", "vwap", "atr",
                 "smart_money_padrao", "bos_padrao", "choch_padrao", "order_blocks_padrao", "fvg_padrao",
@@ -94,6 +95,7 @@ class OperacionalReader:
             "operacional_breakout": breakout,
             "operacional_pullback": pullback,
             "operacional_fibonacci": fib,
+            "apostila_operacional": apostila,
             "operacional_candle_flow": candle_flow[-8:],
             "operacional_current_candle": current,
             "operacional_confirmations": confirmations,
@@ -421,36 +423,247 @@ class OperacionalReader:
             "reading": f"Preco mais proximo da retracao {nearest_key}, zona util para observar pullback e rejeicao.",
         }
 
-    def _risk_context(self, zones: dict[str, Any], trend: dict[str, Any], current: dict[str, Any], breakout: dict[str, Any]) -> dict[str, Any]:
+    def _apostila_operacional_context(self, trend, zones, candle_flow, breakout, pullback, liquidity, fib) -> dict[str, Any]:
+        last = candle_flow[-1] if candle_flow else {}
         close = float(self.df["close"].iloc[-1])
-        if trend["bias"] == "alta":
-            stop = min(zones["support"], float(self.df["low"].tail(8).min()))
+        prior_cote = self._prior_cote_context(zones)
+        dow_50 = self._dow_50_context(trend, zones, fib)
+        market_phase = self._market_phase_context(trend, zones, candle_flow)
+        trigger = self._trigger_context(last, zones, fib)
+        three_candles = self._three_candle_pattern(candle_flow, zones, fib, trend)
+        execution = self._execution_context(three_candles, breakout, pullback, trigger, trend)
+        no_trade = []
+        if market_phase["phase"] in ["distribuicao", "acumulacao"] and not breakout.get("valid_breakout"):
+            no_trade.append("Mercado em acumulacao/distribuicao; evitar clicar no meio da faixa.")
+        if three_candles.get("exception"):
+            no_trade.append(three_candles["exception_reason"])
+        if dow_50.get("against_primary_bias"):
+            no_trade.append("Preco contra a referencia dos 50%; evitar operacao contra tendencia primaria.")
+        if breakout.get("false_breakout") or liquidity.get("sweep"):
+            no_trade.append("Risco de armadilha apos captura de liquidez.")
+
+        return {
+            "source": "Apostila do Operacional",
+            "rules": [
+                "Dow define tendencia por topos e fundos.",
+                "50% do movimento separa contexto primario de compra/venda.",
+                "Rompimento so vale com fechamento alem do nivel.",
+                "Padrao de 3 candles: alvo, negacao e teste para buscar liquidez.",
+                "Nao bater a mercado; planejar ordem atras do ponto de parada.",
+                "Stop tecnico fica na maxima/minima do movimento.",
+            ],
+            "current_price": _round(close),
+            "dow_50": dow_50,
+            "prior_cote": prior_cote,
+            "market_phase": market_phase,
+            "trigger": trigger,
+            "three_candle_pattern": three_candles,
+            "execution": execution,
+            "no_trade_filters": list(dict.fromkeys(no_trade))[:8],
+            "reading": self._apostila_sentence(dow_50, market_phase, trigger, three_candles, execution, no_trade),
+        }
+
+    def _prior_cote_context(self, zones) -> dict[str, Any]:
+        daily = self.df.tail(min(len(self.df), 96))
+        high = float(daily["high"].max())
+        low = float(daily["low"].min())
+        close = float(self.df["close"].iloc[-1])
+        previous_close = float(self.df["close"].iloc[-2]) if len(self.df) > 1 else close
+        adjustment = (high + low + previous_close) / 3
+        levels = [
+            {"type": "prior_maxima", "label": "Prior cote max.", "price": _round(high), "role": "resistencia de diario/hora"},
+            {"type": "prior_minima", "label": "Prior cote min.", "price": _round(low), "role": "suporte de diario/hora"},
+            {"type": "prior_ajuste", "label": "Prior cote ajuste", "price": _round(adjustment), "role": "media operacional da sessao"},
+            {"type": "prior_fechamento", "label": "Prior cote fech.", "price": _round(previous_close), "role": "referencia do fechamento anterior"},
+        ]
+        nearest = min(levels, key=lambda item: abs(close - float(item["price"])))
+        return {
+            "levels": levels,
+            "nearest": nearest,
+            "distance_pct": _round(abs(close - float(nearest["price"])) / close * 100 if close else 0, 3),
+            "reading": f"Preco proximo de {nearest['label']}." if close else "Prior cote indisponivel.",
+        }
+
+    def _dow_50_context(self, trend, zones, fib) -> dict[str, Any]:
+        close = float(self.df["close"].iloc[-1])
+        midpoint = float(zones.get("midpoint") or fib.get("nearest_price") or close)
+        side = "acima_50" if close >= midpoint else "abaixo_50"
+        primary_bias = "compra" if side == "acima_50" else "venda"
+        against = (trend.get("bias") == "alta" and side == "abaixo_50") or (trend.get("bias") == "baixa" and side == "acima_50")
+        return {
+            "midpoint": _round(midpoint),
+            "side": side,
+            "primary_bias": primary_bias,
+            "against_primary_bias": bool(against),
+            "reading": "Preco acima dos 50%, prioridade operacional para compras." if side == "acima_50" else "Preco abaixo dos 50%, prioridade operacional para vendas.",
+        }
+
+    def _market_phase_context(self, trend, zones, candle_flow) -> dict[str, Any]:
+        recent = self.df.tail(24)
+        close = float(self.df["close"].iloc[-1])
+        amplitude = (float(recent["high"].max()) - float(recent["low"].min())) / max(close, 0.00001) * 100
+        body_avg = sum(float(c.get("body_strength", 0)) for c in candle_flow[-8:]) / max(len(candle_flow[-8:]), 1)
+        decision_count = sum(1 for c in candle_flow[-8:] if c.get("body_strength", 0) >= 55)
+        rejection_count = sum(1 for c in candle_flow[-8:] if c.get("upper_wick_pct", 0) >= 42 or c.get("lower_wick_pct", 0) >= 42)
+        if trend.get("bias") == "lateral" or amplitude < 0.45:
+            phase = "acumulacao"
+            reading = "Topos e fundos semelhantes; mercado acumulando contratos."
+        elif decision_count >= 3 and trend.get("bias") in ["alta", "baixa"]:
+            phase = "movimentacao"
+            reading = "Sequencia direcional; mercado em movimentacao."
+        elif rejection_count >= 3 and body_avg < 48:
+            phase = "distribuicao"
+            reading = "Muitas rejeicoes e pouco progresso; risco de distribuicao."
+        else:
+            phase = "transicao"
+            reading = "Fase operacional em transicao."
+        return {
+            "phase": phase,
+            "amplitude_pct": _round(amplitude, 3),
+            "decision_candles": decision_count,
+            "rejections": rejection_count,
+            "reading": reading,
+        }
+
+    def _trigger_context(self, current, zones, fib) -> dict[str, Any]:
+        close = float(current.get("close") or self.df["close"].iloc[-1])
+        body = int(current.get("body_strength", 0) or 0)
+        upper = int(current.get("upper_wick_pct", 0) or 0)
+        lower = int(current.get("lower_wick_pct", 0) or 0)
+        levels = [
+            zones.get("support"),
+            zones.get("resistance"),
+            zones.get("midpoint"),
+            fib.get("nearest_price"),
+        ]
+        finite_levels = [float(level) for level in levels if level is not None]
+        nearest = min(finite_levels, key=lambda price: abs(close - price)) if finite_levels else close
+        tolerance = max(close * 0.0015, abs(float(zones.get("range_high", close)) - float(zones.get("range_low", close))) * 0.03)
+        is_doji_trigger = body <= 32 and (upper >= 35 or lower >= 35) and abs(close - nearest) <= tolerance
+        side = "rejeicao_superior" if upper >= lower and is_doji_trigger else "rejeicao_inferior" if is_doji_trigger else "nenhum"
+        return {
+            "active": bool(is_doji_trigger),
+            "side": side,
+            "level": _round(nearest),
+            "reading": "Gatilho operacional em ponto de parada." if is_doji_trigger else "Sem gatilho operacional claro.",
+        }
+
+    def _three_candle_pattern(self, candle_flow, zones, fib, trend) -> dict[str, Any]:
+        if len(candle_flow) < 3:
+            return {"active": False, "stage": "insuficiente", "direction": "NEUTRO"}
+        c1, c2, c3 = candle_flow[-3:]
+        close = float(c3.get("close", 0))
+        levels = [zones.get("support"), zones.get("resistance"), zones.get("midpoint"), fib.get("nearest_price")]
+        finite_levels = [float(level) for level in levels if level is not None]
+        nearest = min(finite_levels, key=lambda price: abs(float(c1.get("close", close)) - price)) if finite_levels else close
+        tolerance = max(close * 0.0018, abs(float(zones.get("range_high", close)) - float(zones.get("range_low", close))) * 0.04)
+        c1_hit_target = abs(float(c1.get("high", 0)) - nearest) <= tolerance or abs(float(c1.get("low", 0)) - nearest) <= tolerance
+        c2_denies_up = c1.get("direction") == "comprador" and (c2.get("direction") == "vendedor" or c2.get("upper_wick_pct", 0) >= 40)
+        c2_denies_down = c1.get("direction") == "vendedor" and (c2.get("direction") == "comprador" or c2.get("lower_wick_pct", 0) >= 40)
+        c2_denies = c2_denies_up or c2_denies_down
+        direction = "VENDA" if c2_denies_up else "COMPRA" if c2_denies_down else "NEUTRO"
+        c3_tests = False
+        if direction == "COMPRA":
+            c3_tests = float(c3.get("low", close)) <= float(c2.get("low", close)) or c3.get("lower_wick_pct", 0) >= 30
+        elif direction == "VENDA":
+            c3_tests = float(c3.get("high", close)) >= float(c2.get("high", close)) or c3.get("upper_wick_pct", 0) >= 30
+        active = bool(c1_hit_target and c2_denies and c3_tests)
+        came_from_breakout = bool(c1.get("body_strength", 0) >= 58 and c2.get("body_strength", 0) >= 42 and trend.get("strength_label") == "forte")
+        came_from_pullback = bool(abs(float(c1.get("close", close)) - float(zones.get("midpoint", close))) <= tolerance and trend.get("bias") in ["alta", "baixa"])
+        exception = active and (came_from_breakout or came_from_pullback)
+        stop = float(c3.get("low" if direction == "COMPRA" else "high", close)) if direction != "NEUTRO" else None
+        entry = None
+        if direction == "COMPRA":
+            entry = float(c3.get("high", close))
+        elif direction == "VENDA":
+            entry = float(c3.get("low", close))
+        return {
+            "active": active,
+            "stage": "alvo_negacao_teste" if active else "aguardando_padrao",
+            "direction": direction,
+            "target_level": _round(nearest),
+            "entry_reference": _round(entry) if entry is not None else None,
+            "stop_reference": _round(stop) if stop is not None else None,
+            "exception": bool(exception),
+            "exception_reason": "Padrao de 3 candles aparece vindo de pullback/rompimento; apostila orienta evitar." if exception else None,
+            "reading": "Padrao de 3 candles completo: alvo, negacao e teste." if active else "Padrao de 3 candles ainda incompleto.",
+        }
+
+    def _execution_context(self, three_candles, breakout, pullback, trigger, trend) -> dict[str, Any]:
+        mode = "aguardar"
+        direction = "NEUTRO"
+        reason = "Aguardar ponto de parada e confirmacao."
+        if three_candles.get("active") and not three_candles.get("exception"):
+            mode = "padrao_3_candles"
+            direction = three_candles.get("direction", "NEUTRO")
+            reason = "Executar somente com ordem atras do terceiro candle."
+        elif pullback.get("valid_pullback") and trigger.get("active"):
+            mode = "pullback_50"
+            direction = "COMPRA" if trend.get("bias") == "alta" else "VENDA" if trend.get("bias") == "baixa" else "NEUTRO"
+            reason = "Pullback nos 50% com gatilho em ponto de parada."
+        elif breakout.get("valid_breakout"):
+            mode = "rompimento_confirmado"
+            direction = "COMPRA" if breakout.get("direction") == "alta" else "VENDA" if breakout.get("direction") == "baixa" else "NEUTRO"
+            reason = "Rompimento fechado; aguardar teste da regiao rompida."
+        return {"mode": mode, "direction": direction, "reason": reason}
+
+    def _apostila_sentence(self, dow_50, market_phase, trigger, three_candles, execution, no_trade):
+        if no_trade:
+            return no_trade[0]
+        if three_candles.get("active"):
+            return three_candles.get("reading")
+        if trigger.get("active"):
+            return "Gatilho em ponto de parada; observar terceiro candle/teste de liquidez."
+        if market_phase.get("phase") == "movimentacao":
+            return "Mercado em movimentacao; evitar perseguir preco e aguardar teste."
+        return f"{dow_50.get('reading')} {execution.get('reason')}"
+
+    def _risk_context(self, zones: dict[str, Any], trend: dict[str, Any], current: dict[str, Any], breakout: dict[str, Any], apostila: dict[str, Any] | None = None) -> dict[str, Any]:
+        close = float(self.df["close"].iloc[-1])
+        apostila = apostila or {}
+        three_candles = apostila.get("three_candle_pattern", {})
+        execution = apostila.get("execution", {})
+        direction = execution.get("direction")
+        offset = self._point_offset(close)
+        if direction == "COMPRA" and three_candles.get("entry_reference"):
+            entry = float(three_candles["entry_reference"]) + offset
+            stop = float(three_candles.get("stop_reference") or self.df["low"].tail(8).min()) - offset
+            partial = max(float(zones["resistance"]), float(self.df["high"].tail(24).max()))
+        elif direction == "VENDA" and three_candles.get("entry_reference"):
+            entry = float(three_candles["entry_reference"]) - offset
+            stop = float(three_candles.get("stop_reference") or self.df["high"].tail(8).max()) + offset
+            partial = min(float(zones["support"]), float(self.df["low"].tail(24).min()))
+        elif trend["bias"] == "alta":
+            entry = close
+            stop = min(zones["support"], float(self.df["low"].tail(8).min())) - offset
             partial = zones["resistance"] if zones["resistance"] > close else close + (close - stop) * 1.5
         elif trend["bias"] == "baixa":
-            stop = max(zones["resistance"], float(self.df["high"].tail(8).max()))
+            entry = close
+            stop = max(zones["resistance"], float(self.df["high"].tail(8).max())) + offset
             partial = zones["support"] if zones["support"] < close else close - (stop - close) * 1.5
         else:
+            entry = close
             stop = zones["range_low"]
             partial = zones["range_high"]
-        risk = abs(close - stop)
-        reward = abs(partial - close)
+        risk = abs(entry - stop)
+        reward = abs(partial - entry)
         rr = reward / risk if risk else 0
         risk_label = "baixo" if rr >= 1.8 and not breakout["false_breakout"] else "moderado" if rr >= 1.1 else "alto"
         quality = "alta" if rr >= 1.8 and current["body_strength"] >= 45 else "media" if rr >= 1.1 else "baixa"
         return {
             "reference_price": _round(close),
-            "entry": _round(close),
+            "entry": _round(entry),
             "technical_stop": _round(stop),
             "partial_target": _round(partial),
             "take_profit_1": _round(partial),
             "take_profit_2": _round(close + (partial - close) * 1.6 if partial >= close else close - (close - partial) * 1.6),
             "risk_reward": _round(rr, 2),
-            "invalidation": "Perda da zona defendida ou fechamento contra o contexto.",
+            "invalidation": "Perda da maxima/minima tecnica do movimento ou fechamento contra o contexto.",
             "scenario_risk": risk_label,
             "entry_quality": quality,
             "positioning": "Aguardar confirmacao; foco em leitura contextual, nao em sinal automatico.",
             "trade_plan": {
-                "entry": _round(close),
+                "entry": _round(entry),
                 "stop": _round(stop),
                 "take_profit_1": _round(partial),
                 "take_profit_2": _round(close + (partial - close) * 1.6 if partial >= close else close - (close - partial) * 1.6),
@@ -461,11 +674,35 @@ class OperacionalReader:
             },
         }
 
-    def _confirmations(self, trend, current, breakout, pullback, liquidity, risk):
+    def _point_offset(self, price: float) -> float:
+        symbol = str(self.symbol).upper()
+        if symbol.startswith("WIN"):
+            return 25.0
+        if symbol.startswith("WDO"):
+            return 1.0
+        return max(price * 0.0008, 0.0001)
+
+    def _confirmations(self, trend, current, breakout, pullback, liquidity, risk, apostila=None):
+        apostila = apostila or {}
+        execution = apostila.get("execution", {})
+        three_candles = apostila.get("three_candle_pattern", {})
+        trigger = apostila.get("trigger", {})
+        dow_50 = apostila.get("dow_50", {})
+        phase = apostila.get("market_phase", {})
         confirmations = []
         invalidations = []
         if trend["bias"] in ["alta", "baixa"] and trend["strength_label"] in ["forte", "moderada"]:
             confirmations.append("Teoria de Dow alinhada com a direcao dominante.")
+        if not dow_50.get("against_primary_bias") and dow_50.get("primary_bias"):
+            confirmations.append("Preco respeita a leitura dos 50% do movimento.")
+        if trigger.get("active"):
+            confirmations.append("Gatilho operacional em ponto de parada.")
+        if three_candles.get("active") and not three_candles.get("exception"):
+            confirmations.append("Padrao de 3 candles completo: alvo, negacao e teste.")
+        if execution.get("mode") == "rompimento_confirmado":
+            confirmations.append("Rompimento fechado; aguardar teste da regiao rompida.")
+        if phase.get("phase") == "movimentacao" and trend.get("bias") in ["alta", "baixa"]:
+            confirmations.append("Fase de movimentacao alinhada a tendencia.")
         if current["body_strength"] >= 55:
             confirmations.append("Candle atual mostra corpo dominante e agressao direcional.")
         if pullback["valid_pullback"]:
@@ -484,6 +721,12 @@ class OperacionalReader:
             invalidations.append("Risco/retorno desfavoravel para acao operacional.")
         if trend["bias"] in ["lateral", "neutro"]:
             invalidations.append("Estrutura sem tendencia limpa.")
+        if dow_50.get("against_primary_bias"):
+            invalidations.append("Preco contra a referencia operacional dos 50%.")
+        if phase.get("phase") in ["acumulacao", "distribuicao"] and not breakout.get("valid_breakout"):
+            invalidations.append("Mercado em acumulacao/distribuicao sem rompimento confirmado.")
+        if three_candles.get("exception"):
+            invalidations.append(three_candles.get("exception_reason"))
         return confirmations[:8], invalidations[:8]
 
     def _context_label(self, trend, current, breakout, pullback):
@@ -543,7 +786,8 @@ class OperacionalReader:
             return "Contexto bom para acompanhamento proximo, priorizando confirmacao e stop tecnico."
         return "Manter leitura ativa e buscar confirmacao antes de qualquer plano."
 
-    def _operational_score(self, context, confirmations, invalidations, current, pullback, breakout, liquidity, risk):
+    def _operational_score(self, context, confirmations, invalidations, current, pullback, breakout, liquidity, risk, apostila=None):
+        apostila = apostila or {}
         score = int(context.get("quality", 0))
         score += min(18, len(confirmations) * 6)
         score -= min(24, len(invalidations) * 8)
@@ -559,6 +803,15 @@ class OperacionalReader:
             score -= 14
         elif risk.get("entry_quality") == "alta":
             score += 8
+        execution_mode = apostila.get("execution", {}).get("mode")
+        if execution_mode in ["padrao_3_candles", "pullback_50", "rompimento_confirmado"]:
+            score += 12
+        if apostila.get("three_candle_pattern", {}).get("exception"):
+            score -= 18
+        if apostila.get("dow_50", {}).get("against_primary_bias"):
+            score -= 14
+        if apostila.get("market_phase", {}).get("phase") == "distribuicao":
+            score -= 10
         return int(max(0, min(100, score)))
 
     def _signal_payload(self, context, trend, confirmations, invalidations, risk, score):
@@ -620,27 +873,44 @@ class OperacionalReader:
             messages.append("Aguardar confirmacao do proximo candle.")
         return messages[:8]
 
-    def _chart_marks(self, zones, risk, breakout, pullback, liquidity):
+    def _chart_marks(self, zones, risk, breakout, pullback, liquidity, apostila=None):
+        apostila = apostila or {}
+        prior_lines = [
+            {
+                "type": level.get("type"),
+                "label": level.get("label"),
+                "price": level.get("price"),
+                "color": "#F59E0B" if level.get("type") == "prior_ajuste" else "#94A3B8",
+            }
+            for level in apostila.get("prior_cote", {}).get("levels", [])
+        ]
         return {
             "price_lines": [
                 {"type": "support", "label": "Suporte", "price": zones.get("support"), "color": "#22C55E"},
                 {"type": "resistance", "label": "Resistencia", "price": zones.get("resistance"), "color": "#EF4444"},
+                {"type": "midpoint", "label": "50% Mov.", "price": zones.get("midpoint"), "color": "#A78BFA"},
                 {"type": "liquidity_upper", "label": "Liquidez sup.", "price": zones.get("upper_liquidity"), "color": "#D4AF37"},
                 {"type": "liquidity_lower", "label": "Liquidez inf.", "price": zones.get("lower_liquidity"), "color": "#38BDF8"},
                 {"type": "entry", "label": "Entrada", "price": risk.get("entry"), "color": "#38BDF8"},
                 {"type": "stop", "label": "Stop", "price": risk.get("technical_stop"), "color": "#EF4444"},
                 {"type": "take_profit", "label": "Take", "price": risk.get("take_profit_1"), "color": "#22C55E"},
-            ],
+            ] + prior_lines,
             "events": {
                 "false_breakout": breakout.get("false_breakout"),
                 "pullback": pullback.get("valid_pullback"),
                 "pullback_failure": pullback.get("pullback_failure"),
                 "liquidity_sweep": liquidity.get("sweep"),
+                "apostila_phase": apostila.get("market_phase", {}).get("phase"),
+                "apostila_execution": apostila.get("execution", {}).get("mode"),
+                "three_candle_pattern": apostila.get("three_candle_pattern", {}).get("active"),
             },
         }
 
-    def _narrative(self, context, trend, current, breakout, pullback, liquidity, risk):
+    def _narrative(self, context, trend, current, breakout, pullback, liquidity, risk, apostila=None):
+        apostila = apostila or {}
         lines = [f"{context['label']}: {trend['structure']}."]
+        if apostila.get("reading"):
+            lines.append(apostila["reading"])
         lines.append(current["reading"])
         lines.append(breakout["reading"])
         lines.append(pullback["reading"])

@@ -1,5 +1,6 @@
 import os
 import math
+from datetime import datetime, timedelta, timezone
 
 import requests
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
@@ -15,6 +16,7 @@ from ia.analysis import (
 )
 from ia.ai_narrative_engine import AINarrativeEngine
 from ia.binance_client import TimedCache
+from ia.candle_reading_engine import build_candle_reading
 from ia.confluence_engine import DISCLAIMER, build_confluence_analysis
 from ia.context_engine import ContextEngine
 from ia.data_generator import generate_realistic_data
@@ -25,6 +27,7 @@ from ia.flow_engine import build_flow_context
 from ia.institutional_confluence_engine import build_institutional_confluence
 from ia.institutional_decision_engine import build_institutional_decision
 from ia.institutional_signal_engine import build_institutional_signal
+from ia.layered_signal_engine import build_layered_signal
 from ia.live_trading import build_live_status
 from ia.live_signals import LiveSignalManager
 from ia.market_data_service import build_market_data_snapshot
@@ -43,6 +46,7 @@ from ia.technical_reader import read_technical
 from ia.elliott_wave import read_elliott_wave
 from ia.tape_reading import read_tape
 from ia.volume_reader import read_volume
+from ia.vortex_ai_engine import build_vortex_ai_decision
 from ia.websocket_manager import build_binance_kline_stream
 from ia.wyckoff_reader import read_wyckoff_advanced
 from ia.wyckoff_engine import build_wyckoff_context
@@ -83,11 +87,18 @@ operacional_live_signals = []
 
 SUPPORTED_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 HEATMAP_TIMEFRAMES = ["5m", "15m", "1h", "4h", "1d"]
+VORTEX_TIMEFRAMES = ["1h", "15m", "5m", "1m"]
 DEFAULT_SYMBOL = "BTCUSDT"
 
 
 def normalize_symbol(symbol):
-    value = (symbol or DEFAULT_SYMBOL).replace("-", "").replace("/", "").upper()
+    value = (symbol or DEFAULT_SYMBOL).replace("-", "").replace("/", "").upper().strip()
+    if ":" in value:
+        value = value.split(":")[-1]
+    if value in {"WIN1!", "WIN1"}:
+        return "WIN"
+    if value in {"WDO1!", "WDO1"}:
+        return "WDO"
     if not value:
         return DEFAULT_SYMBOL
     return value
@@ -764,6 +775,73 @@ def build_multi_timeframe(symbol, timeframes=None):
     return analysis, confluence
 
 
+def load_layered_live_candles(symbol, current_timeframe, current_df):
+    candles = {}
+    for timeframe in ["1h", "15m", "5m", "1m"]:
+        if timeframe == current_timeframe:
+            candles[timeframe] = current_df
+            continue
+        try:
+            candles[timeframe] = load_market_data(symbol, timeframe, 260)
+        except Exception:
+            candles[timeframe] = current_df if timeframe == "1m" else current_df.tail(0)
+    if current_timeframe not in candles:
+        candles[current_timeframe] = current_df
+    return candles
+
+
+def apply_layered_signal_to_live_status(status, layered_signal):
+    signal = (layered_signal or {}).get("signal", {})
+    ai_score = (layered_signal or {}).get("ai_score", {})
+    macro = (layered_signal or {}).get("macro_context", {})
+    structure = (layered_signal or {}).get("market_structure", {})
+    confirmation = (layered_signal or {}).get("confirmation", {})
+    generated = bool(signal.get("generated"))
+    direction_code = signal.get("direction_code", "NEUTRAL")
+    score = int(ai_score.get("score", signal.get("score", 0)) or 0)
+    blockers = list(dict.fromkeys(
+        (macro.get("blockers") or [])
+        + (structure.get("blockers") or [])
+        + (confirmation.get("blockers") or [])
+        + (ai_score.get("blockers") or [])
+    ))
+
+    status["layered_signal"] = layered_signal
+    status["signal_engine"] = "layered_signal_engine"
+    status["confluence_score"] = score
+    status["confidence"] = min(95, max(0, score))
+    status["probable_direction"] = direction_code if generated else "NEUTRAL"
+    status["reason"] = signal.get("reason") or (blockers[0] if blockers else "Aguardando camadas validarem o sinal.")
+    status["confirmation_filters"] = blockers[:12]
+    status["invalidations"] = blockers[:10] if not generated else []
+    status["real_invalidations"] = [] if generated else blockers[:10]
+
+    if generated:
+        state = "BUY_CONFIRMED" if direction_code == "BUY" else "SELL_CONFIRMED"
+        status.update({
+            "state": state,
+            "status": "COMPRA CONFIRMADA" if direction_code == "BUY" else "VENDA CONFIRMADA",
+            "message": signal.get("reason"),
+            "messages": [signal.get("reason"), f"Camada validada: {signal.get('validated_layer')}."] + status.get("messages", [])[:6],
+            "entry_aggressive": signal.get("entry_price"),
+            "entry_conservative": signal.get("entry_price"),
+            "stop_loss": signal.get("stop_loss"),
+            "take_profit": signal.get("take_profit_1"),
+            "take_profit_2": signal.get("take_profit_2"),
+            "risk_reward": signal.get("risk_reward"),
+        })
+    else:
+        status.update({
+            "state": "WAITING_CONFIRMATION",
+            "status": "AGUARDANDO CAMADAS",
+            "message": signal.get("reason") or "Score por camadas abaixo de 80.",
+            "messages": [signal.get("reason") or "Score por camadas abaixo de 80."] + blockers[:6] + status.get("messages", [])[:3],
+            "entry_aggressive": None,
+            "entry_conservative": None,
+        })
+    return status
+
+
 def apply_mtf_gate(signal, score, validation, confluence):
     gated_signal = dict(signal)
     if confluence["strong_signal_allowed"]:
@@ -873,6 +951,12 @@ def advanced():
 @login_required
 def live():
     return render_template("live.html")
+
+
+@app.route("/signals")
+@login_required
+def signals():
+    return render_template("signals.html")
 
 
 @app.route("/operacional")
@@ -1034,6 +1118,10 @@ def get_analysis(symbol, timeframe):
                 "counts": {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0},
             }
         try:
+            vortex_mtf_analysis, vortex_mtf_confluence = build_multi_timeframe(symbol, VORTEX_TIMEFRAMES)
+        except Exception:
+            vortex_mtf_analysis, vortex_mtf_confluence = mtf_analysis, mtf_confluence
+        try:
             smc = build_smc_context(df, signal.get("signal_type", "neutro"))
         except Exception:
             pass
@@ -1140,11 +1228,66 @@ def get_analysis(symbol, timeframe):
             institutional_decision.get("timing", {}),
             risk_plan,
         )
+        vortex_mtf = build_institutional_mtf_context(vortex_mtf_analysis, vortex_mtf_confluence)
+        candle_reading = build_candle_reading(
+            df,
+            symbol,
+            timeframe,
+            technical=technical_reading,
+            smc=smc,
+            wyckoff=wyckoff,
+            volume=volume_analysis,
+            flow=flow_context,
+            mtf=vortex_mtf_confluence,
+        )
+        vortex_ai = build_vortex_ai_decision(
+            symbol=symbol,
+            timeframe=timeframe,
+            current_price=current_price,
+            technical=technical_reading,
+            smc=smc,
+            wyckoff=wyckoff,
+            volume=volume_analysis,
+            flow=flow_context,
+            mtf_analysis=vortex_mtf_analysis,
+            mtf_confluence=vortex_mtf_confluence,
+            institutional_mtf=vortex_mtf,
+            risk_plan=risk_plan,
+            institutional_decision=institutional_decision,
+            market_meta=market_meta,
+            candle_reading=candle_reading,
+        )
+        legacy_institutional_signal = dict(institutional_signal)
+        institutional_signal = {
+            **institutional_signal,
+            "signal": vortex_ai.get("signal", institutional_signal.get("signal")),
+            "direction": vortex_ai.get("direction", institutional_signal.get("direction")),
+            "classification": vortex_ai.get("mode", institutional_signal.get("classification")),
+            "entry": vortex_ai.get("entry"),
+            "stop_loss": vortex_ai.get("stop_loss"),
+            "take_profit": vortex_ai.get("take_profit"),
+            "risk_reward": (vortex_ai.get("risk") or {}).get("risk_reward"),
+            "invalidation": vortex_ai.get("invalidation"),
+            "reason": vortex_ai.get("reason") or vortex_ai.get("wait_reason") or institutional_signal.get("reason"),
+            "high_quality": vortex_ai.get("signal") in ["COMPRA", "VENDA"],
+            "vortex_filtered": True,
+        }
+        institutional_decision.update({
+            "legacy_signal": legacy_institutional_signal,
+            "vortex_ai": vortex_ai,
+            "candle_reading": candle_reading,
+            "score": vortex_ai.get("score", institutional_decision.get("score")),
+            "confidence": vortex_ai.get("confidence", institutional_decision.get("confidence")),
+            "signal": vortex_ai.get("signal", institutional_decision.get("signal")),
+            "direction": vortex_ai.get("direction", institutional_decision.get("direction")),
+            "narrative": (vortex_ai.get("narrative") or {}).get("summary") or institutional_decision.get("narrative"),
+            "invalidations": list(dict.fromkeys((institutional_decision.get("invalidations") or []) + (vortex_ai.get("blockers") or []))),
+        })
         institutional_narrative = build_operational_narrative(
             institutional_signal,
             smc,
             flow_context,
-            institutional_mtf,
+            vortex_mtf,
             risk_plan,
         )
         institutional_decision.update({
@@ -1152,7 +1295,7 @@ def get_analysis(symbol, timeframe):
             "signal_payload": institutional_signal,
             "risk_plan": {**institutional_decision.get("risk_plan", {}), **risk_plan},
             "flow": flow_context,
-            "multi_timeframe": institutional_mtf,
+            "multi_timeframe": vortex_mtf,
             "narrative_payload": institutional_narrative,
         })
         persistent_context = analysis_context_engine.update(df, symbol, timeframe, {
@@ -1211,17 +1354,21 @@ def get_analysis(symbol, timeframe):
             "institutional_risk": risk_plan,
             "institutional_narrative": institutional_narrative,
             "institutional_mtf": institutional_mtf,
+            "vortex_ai": vortex_ai,
+            "vortex_multi_timeframe": vortex_mtf,
             "institutional_ai": {
                 "context": persistent_context,
                 "smc": smc,
                 "wyckoff": wyckoff,
                 "elliott": elliott_wave,
                 "flow": flow_context,
-                "multi_timeframe": institutional_mtf,
+                "multi_timeframe": vortex_mtf,
                 "confluence": institutional_confluence,
                 "signal": institutional_signal,
                 "risk": risk_plan,
                 "narrative": institutional_narrative,
+                "vortex": vortex_ai,
+                "candle_reading": candle_reading,
             },
             "context_engine": persistent_context,
             "signal_cards": signal_cards,
@@ -1240,6 +1387,8 @@ def get_analysis(symbol, timeframe):
             "multi_timeframe": {
                 "analysis": mtf_analysis,
                 "confluence": mtf_confluence,
+                "vortex_analysis": vortex_mtf_analysis,
+                "vortex_confluence": vortex_mtf_confluence,
             },
             "validation": validation,
             "scenario": build_scenario(signal, validation, smc),
@@ -1247,11 +1396,12 @@ def get_analysis(symbol, timeframe):
             "final_score": final_score,
             "confluence_ai": confluence_ai,
             "operational_signal": operational_signal,
-            "final_signal": operational_signal.get("signal") or confluence_ai.get("signal") or final_score.get("signal"),
+            "final_signal": vortex_ai.get("signal") or operational_signal.get("signal") or confluence_ai.get("signal") or final_score.get("signal"),
             "market_bias": mtf_confluence.get("dominant_direction") or institutional_payload.get("institutional_bias"),
             "disclaimer": DISCLAIMER,
             "operational_state": operational_state,
-            "candle_reading": ta.read_latest_candles(5),
+            "candle_reading": candle_reading,
+            "legacy_candle_reading": ta.read_latest_candles(5),
             "reasoning": final_score["technical_reasons"] + final_score["invalidation_reasons"],
             "operational_score": score,
             "current_price": current_price,
@@ -1414,7 +1564,17 @@ def api_live_status(symbol, timeframe):
         df = load_market_data(symbol, timeframe, 260)
         ticker = get_ticker(symbol)
         status = build_live_status(df, symbol, timeframe, ticker)
+        layered_signal = build_layered_signal(
+            symbol,
+            load_layered_live_candles(symbol, timeframe, df),
+            entry_timeframe="1m" if timeframe not in {"1m", "2m"} else timeframe,
+        )
+        status = apply_layered_signal_to_live_status(status, layered_signal)
         market_meta = market.last_meta(symbol)
+        try:
+            live_technical_reading = read_technical(df)
+        except Exception:
+            live_technical_reading = status.get("technical", {})
         try:
             live_smc = build_smc_context(df, (status.get("technical") or {}).get("signal") or status.get("probable_direction", "NEUTRAL"))
         except Exception:
@@ -1436,7 +1596,7 @@ def api_live_status(symbol, timeframe):
             elliott=status.get("elliott_wave", {}),
             flow=live_flow,
             mtf=live_mtf,
-            technical=status.get("technical", {}),
+            technical=live_technical_reading,
             risk=live_risk,
         )
         live_signal = build_institutional_signal(live_confluence, {"confirmed": status.get("state") in ["BUY_CONFIRMED", "SELL_CONFIRMED", "AGGRESSIVE_ENTRY", "CONSERVATIVE_ENTRY"]}, live_risk)
@@ -1453,6 +1613,37 @@ def api_live_status(symbol, timeframe):
             _, mtf_confluence = build_multi_timeframe(symbol)
         except Exception:
             mtf_confluence = {"strong_signal_allowed": True}
+        try:
+            live_vortex_mtf_analysis, live_vortex_mtf_confluence = build_multi_timeframe(symbol, VORTEX_TIMEFRAMES)
+            live_vortex_mtf = build_institutional_mtf_context(live_vortex_mtf_analysis, live_vortex_mtf_confluence)
+            live_vortex_ai = build_vortex_ai_decision(
+                symbol=symbol,
+                timeframe=timeframe,
+                current_price=status.get("current_price", 0),
+                technical=live_technical_reading,
+                smc=live_smc,
+                wyckoff=live_wyckoff,
+                volume=status.get("volume", {}),
+                flow=live_flow,
+                mtf_analysis=live_vortex_mtf_analysis,
+                mtf_confluence=live_vortex_mtf_confluence,
+                institutional_mtf=live_vortex_mtf,
+                risk_plan=live_risk,
+                institutional_decision={"timing": {"confirmed": live_signal.get("high_quality", False)}},
+                market_meta=market_meta,
+                candle_reading=status.get("candle_reading", {}),
+            )
+        except Exception as vortex_error:
+            live_vortex_mtf = live_mtf
+            live_vortex_ai = {
+                "mode": "VORTEX_AI",
+                "signal": "AGUARDAR",
+                "direction": "NEUTRAL",
+                "score": 0,
+                "confidence": 0,
+                "blockers": [f"Vortex AI indisponivel: {vortex_error}"],
+                "narrative": {"summary": "Vortex AI aguardando dados institucionais completos."},
+            }
         status.update({
             "market": market_meta.get("market"),
             "market_label": market_meta.get("market_label"),
@@ -1470,12 +1661,14 @@ def api_live_status(symbol, timeframe):
                 "smc": live_smc,
                 "wyckoff": live_wyckoff,
                 "flow": live_flow,
-                "multi_timeframe": live_mtf,
+                "multi_timeframe": live_vortex_mtf,
                 "confluence": live_confluence,
                 "signal": live_signal,
                 "risk": live_risk,
                 "narrative": live_narrative,
+                "vortex": live_vortex_ai,
             },
+            "vortex_ai": live_vortex_ai,
             "websocket": build_binance_kline_stream(symbol, timeframe) if market_meta.get("streaming", False) else None,
         })
         status["signal_event"] = live_signal_manager.update_from_live_status(status, market_meta, mtf_confluence)
@@ -1578,6 +1771,12 @@ def api_live_signals():
         df = load_market_data(symbol, timeframe, 260)
         ticker = get_ticker(symbol)
         status = build_live_status(df, symbol, timeframe, ticker)
+        layered_signal = build_layered_signal(
+            symbol,
+            load_layered_live_candles(symbol, timeframe, df),
+            entry_timeframe="1m" if timeframe not in {"1m", "2m"} else timeframe,
+        )
+        status = apply_layered_signal_to_live_status(status, layered_signal)
         mtf_confluence = {}
         try:
             _, mtf_confluence = build_multi_timeframe(symbol)
@@ -1602,6 +1801,64 @@ def api_live_signals():
         return jsonify(sanitize_json(response))
     except Exception as error:
         return jsonify({"success": False, "error": str(error), "active": live_signal_manager.list_active(), "stats": live_signal_manager.stats()}), 200
+
+
+@app.route("/api/signals/realtime")
+@login_required
+def api_signals_realtime():
+    symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
+    timeframe = normalize_timeframe(request.args.get("timeframe", "15m"))
+    try:
+        df = load_market_data(symbol, timeframe, 260)
+        ticker = get_ticker(symbol)
+        status = build_live_status(df, symbol, timeframe, ticker)
+        layered_signal = build_layered_signal(
+            symbol,
+            load_layered_live_candles(symbol, timeframe, df),
+            entry_timeframe="1m" if timeframe not in {"1m", "2m"} else timeframe,
+        )
+        status = apply_layered_signal_to_live_status(status, layered_signal)
+        status.update({
+            "market": market.last_meta(symbol).get("market"),
+            "market_label": market.last_meta(symbol).get("market_label"),
+            "source": market.last_meta(symbol).get("source"),
+            "market_data_status": market.last_meta(symbol).get("market_status"),
+        })
+        current_signal = live_signal_manager.update_from_live_status(status, market.last_meta(symbol), {})
+        return jsonify(sanitize_json({
+            "success": True,
+            "signal": current_signal,
+            "active": live_signal_manager.list_active(),
+            "history": live_signal_manager.list_history(100),
+            "stats": live_signal_manager.stats(),
+            "websocket": build_binance_kline_stream(symbol, timeframe) if market.last_meta(symbol).get("streaming", False) else None,
+            "disclaimer": "Analise educativa. Nao constitui recomendacao financeira. Toda operacao envolve risco.",
+        }))
+    except Exception as error:
+        return jsonify(sanitize_json({
+            "success": False,
+            "error": str(error),
+            "active": live_signal_manager.list_active(),
+            "history": live_signal_manager.list_history(100),
+            "stats": live_signal_manager.stats(),
+        })), 200
+
+
+@app.route("/api/signals/price-update", methods=["POST"])
+@login_required
+def api_signals_price_update():
+    payload = request.get_json(silent=True) or {}
+    symbol = normalize_symbol(payload.get("symbol", DEFAULT_SYMBOL))
+    price = float(payload.get("price") or 0)
+    for key, signal in list(live_signal_manager.repository.active.items()):
+        if signal.get("asset") == symbol:
+            live_signal_manager.update_price(signal, price, key)
+    return jsonify(sanitize_json({
+        "success": True,
+        "active": live_signal_manager.list_active(),
+        "history": live_signal_manager.list_history(100),
+        "stats": live_signal_manager.stats(),
+    }))
 
 
 @app.route("/api/live/signals/active")
@@ -1841,6 +2098,88 @@ def get_heatmap():
         return jsonify({"success": True, "source": "router", "heatmap": heatmap})
     except Exception as error:
         return jsonify({"success": False, "error": str(error)}), 400
+
+
+@app.route("/api/trading-hours/<symbol>")
+def get_trading_hours(symbol):
+    try:
+        symbol = normalize_symbol(symbol)
+        payload = build_trading_hours(symbol)
+        return jsonify({"success": True, **payload})
+    except Exception as error:
+        return jsonify({"success": False, "error": str(error)}), 400
+
+
+def build_trading_hours(symbol):
+    brt = timezone(timedelta(hours=-3), name="BRT")
+    now = datetime.now(brt)
+    current_hour = now.hour
+    profile = trading_hours_profile(symbol)
+    hours = []
+
+    for hour in range(24):
+        level = "low"
+        label = "Baixa"
+        score = 25
+        if hour in profile["medium"]:
+            level, label, score = "medium", "Media", 55
+        if hour in profile["high"]:
+            level, label, score = "high", "Alta", 72
+        if hour in profile["excellent"]:
+            level, label, score = "excellent", "Excelente", 90
+        hours.append({
+            "hour": hour,
+            "label": f"{hour:02d}h",
+            "level": level,
+            "level_label": label,
+            "score": score,
+            "is_now": hour == current_hour,
+        })
+
+    return {
+        "symbol": symbol,
+        "asset_label": profile["asset_label"],
+        "timezone": "Brasil (BRT)",
+        "current_hour": current_hour,
+        "hours": hours,
+        "summary": profile["summary"],
+    }
+
+
+def trading_hours_profile(symbol):
+    market_key = market.identify_market(symbol)
+    if symbol in {"WIN", "WDO"}:
+        return {
+            "asset_label": f"{symbol} - B3",
+            "excellent": {9, 10, 11, 14, 15},
+            "high": {12, 13, 16},
+            "medium": {8, 17},
+            "summary": f"Para {symbol}, os melhores horarios costumam ser 09h-11h e 14h-15h BRT, quando ha mais liquidez e confirmacao de fluxo.",
+        }
+    if symbol in {"EURUSD", "GBPUSD", "USDJPY", "XAUUSD"}:
+        asset_names = {"EURUSD": "Euro / Dolar", "GBPUSD": "Libra / Dolar", "USDJPY": "Dolar / Iene", "XAUUSD": "Ouro / Dolar"}
+        return {
+            "asset_label": asset_names.get(symbol, symbol),
+            "excellent": {6, 7, 8, 10, 11, 12},
+            "high": {5, 9, 13},
+            "medium": {4, 14, 15},
+            "summary": f"Para {symbol}, a maior assertividade tende a aparecer em 06h-08h e 10h-12h BRT, nas janelas de Londres e sobreposicao Londres-NY.",
+        }
+    if market_key == "crypto":
+        return {
+            "asset_label": symbol,
+            "excellent": {9, 10, 11, 15, 16, 17, 21},
+            "high": {8, 12, 14, 18, 20, 22},
+            "medium": {0, 1, 7, 13, 19, 23},
+            "summary": f"Para {symbol}, priorize 09h-11h, 15h-17h e 21h BRT, quando o volume global costuma melhorar e os rompimentos ficam mais limpos.",
+        }
+    return {
+        "asset_label": symbol,
+        "excellent": {9, 10, 11, 14, 15, 16},
+        "high": {8, 12, 13, 17},
+        "medium": {7, 18},
+        "summary": f"Para {symbol}, use como referencia 09h-11h e 14h-16h BRT, evitando horarios de baixa liquidez.",
+    }
 
 
 def create_mtf_heatmap(assets, timeframes):

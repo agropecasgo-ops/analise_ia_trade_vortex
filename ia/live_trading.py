@@ -5,6 +5,7 @@ Motor Live Trading IA para leitura operacional em tempo quase real.
 from datetime import datetime, timezone
 
 from .analysis import RiskManagement
+from .candle_reading_engine import build_candle_reading
 from .elliott_wave import read_elliott_wave
 from .smart_money import analyze_smart_money
 from .tape_reading import read_tape
@@ -57,7 +58,21 @@ class LiveTradingIA:
             tape_reading = read_tape(self.df)
         except Exception:
             tape_reading = {"order_flow_bias": "BALANCED_FLOW", "flow_score": 50, "absorption": {"detected": False}, "confirmations": [], "invalidations": [], "explanation": "Tape reading indisponivel."}
-        levels = self._levels(technical)
+        flow_context = {
+            "pressure": "BUYER" if tape_reading.get("order_flow_bias") == "BUY_FLOW" else "SELLER" if tape_reading.get("order_flow_bias") == "SELL_FLOW" else "BALANCED",
+            "order_flow_bias": tape_reading.get("order_flow_bias"),
+        }
+        candle_reading = build_candle_reading(
+            self.df,
+            self.symbol,
+            self.timeframe,
+            technical=technical,
+            smc=smc,
+            wyckoff=wyckoff,
+            volume=volume,
+            flow=flow_context,
+        )
+        levels = self._merge_candle_levels(self._levels(technical), candle_reading)
 
         trend_score, trend_strength = self._trend_score(technical)
         momentum_score = self._momentum_score(technical)
@@ -68,7 +83,7 @@ class LiveTradingIA:
         tape_score = int(tape_reading.get("flow_score", 50))
         risk_score = self._risk_score(levels)
         timing_score = self._timing_score(technical, volume)
-        candle_score = self._candle_score(technical)
+        candle_score = self._candle_score(technical, candle_reading)
 
         confluence_score = int(max(0, min(100, round(
             trend_score * 0.22
@@ -82,12 +97,15 @@ class LiveTradingIA:
             + candle_score * 0.07
         ))))
         direction = self._direction(technical, smc, volume, tape_reading)
-        invalidations = self._real_invalidations(technical, volume, smc, levels)
-        confirmation_filters = self._confirmation_filters(technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading)
-        confirmations = self._confirmations(technical, volume, smc, wyckoff, elliott_wave, tape_reading)
-        state = self._state(confluence_score, direction, technical, volume, smc, levels, invalidations)
-        messages = self._messages(state, confluence_score, direction, technical, volume, smc, confirmations, confirmation_filters, wyckoff, elliott_wave, tape_reading)
+        invalidations = self._real_invalidations(technical, volume, smc, levels, candle_reading)
+        confirmation_filters = self._confirmation_filters(technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading, candle_reading)
+        confirmations = self._confirmations(technical, volume, smc, wyckoff, elliott_wave, tape_reading, candle_reading)
+        state = self._state(confluence_score, direction, technical, volume, smc, levels, invalidations, candle_reading)
+        messages = self._messages(state, confluence_score, direction, technical, volume, smc, confirmations, confirmation_filters, wyckoff, elliott_wave, tape_reading, candle_reading)
         confidence = int(max(10, min(95, confluence_score * 0.72 + len(confirmations) * 3 - len(invalidations) * 5 - len(confirmation_filters) * 1.5)))
+        if state in ["BUY_CONFIRMED", "SELL_CONFIRMED"] and (confidence < 80 or confluence_score < 85 or not candle_reading.get("setup_validated")):
+            state = "WAITING_CONFIRMATION"
+            messages.insert(0, candle_reading.get("blockers", ["Aguardando candle gatilho."])[0])
 
         return {
             "success": True,
@@ -119,6 +137,10 @@ class LiveTradingIA:
             "previous_close": round(float(self.previous["close"]), 8),
             "current_candle": self._candle_payload(self.current),
             "previous_candle": self._candle_payload(self.previous),
+            "candle_reading": candle_reading,
+            "candle_panel": candle_reading.get("panel", {}),
+            "candle_sequence": candle_reading.get("sequence", {}),
+            "last_candle_readings": candle_reading.get("last_candles", []),
             "support_resistance": technical.get("details", {}).get("support_resistance", {}),
             "smc": {
                 "score": smc_score,
@@ -181,6 +203,31 @@ class LiveTradingIA:
         if signal == "SELL":
             return round(entry - risk * 3, 8)
         return round(entry + risk * 3, 8)
+
+    def _merge_candle_levels(self, levels, candle_reading):
+        risk = (candle_reading or {}).get("risk", {})
+        if not risk.get("structural_stop_valid"):
+            return levels
+        rr = float(risk.get("risk_reward") or 0)
+        if rr < 2:
+            return levels
+        entry = risk.get("entry")
+        stop = risk.get("stop_loss")
+        take = risk.get("take_profit")
+        partial = risk.get("take_partial")
+        if entry is None or stop is None or take is None:
+            return levels
+        return {
+            **levels,
+            "entry_aggressive": entry,
+            "entry_conservative": entry,
+            "stop_loss": stop,
+            "take_profit_1": partial,
+            "take_profit_2": take,
+            "take_profit_3": take,
+            "risk_reward": round(rr, 2),
+            "invalidation": risk.get("invalidation"),
+        }
 
     def _trend_score(self, technical):
         direction = technical.get("trend", {}).get("direction", "SIDEWAYS")
@@ -248,7 +295,10 @@ class LiveTradingIA:
             score += 10
         return int(max(0, min(100, score)))
 
-    def _candle_score(self, technical):
+    def _candle_score(self, technical, candle_reading=None):
+        candle_reading = candle_reading or {}
+        if candle_reading.get("success"):
+            return int(max(0, min(100, float(candle_reading.get("score", 0)))))
         candle = technical.get("details", {}).get("candle_strength", {})
         if candle.get("strong"):
             return 82
@@ -269,7 +319,8 @@ class LiveTradingIA:
             return "SELL"
         return "NEUTRAL"
 
-    def _state(self, score, direction, technical, volume, smc, levels, invalidations):
+    def _state(self, score, direction, technical, volume, smc, levels, invalidations, candle_reading=None):
+        candle_reading = candle_reading or {}
         lateral = technical.get("details", {}).get("lateralization", {}).get("detected")
         weak_volume = float(volume.get("metrics", {}).get("volume_ratio", 1)) < 0.72
         false_breakout = smc.get("false_breakout", {}).get("detected")
@@ -284,19 +335,26 @@ class LiveTradingIA:
             return "SIDEWAYS"
         if weak_volume and score < 66:
             return "WEAK_VOLUME"
-        if direction == "BUY" and score >= 78:
+        candle_ok = bool(candle_reading.get("setup_validated"))
+        candle_score = float(candle_reading.get("score", 0) or 0)
+        candle_confidence = float(candle_reading.get("confidence", 0) or 0)
+        precise_gate = candle_ok and candle_score >= 85 and candle_confidence >= 80 and rr >= 2
+
+        if direction == "BUY" and score >= 85 and precise_gate:
             return "BUY_CONFIRMED"
-        if direction == "SELL" and score >= 78:
+        if direction == "SELL" and score >= 85 and precise_gate:
             return "SELL_CONFIRMED"
-        if direction in ["BUY", "SELL"] and score >= 68 and breakout:
+        if direction in ["BUY", "SELL"] and score >= 58 and not candle_ok:
+            return "WAITING_CONFIRMATION"
+        if direction in ["BUY", "SELL"] and score >= 72 and breakout and candle_score >= 75:
             return "AGGRESSIVE_ENTRY"
-        if direction in ["BUY", "SELL"] and score >= 58:
+        if direction in ["BUY", "SELL"] and score >= 62 and candle_score >= 70:
             return "CONSERVATIVE_ENTRY"
         if score < 42:
             return "WAIT_NEXT_CANDLE"
         return "WAITING_CONFIRMATION"
 
-    def _confirmations(self, technical, volume, smc, wyckoff, elliott_wave, tape_reading):
+    def _confirmations(self, technical, volume, smc, wyckoff, elliott_wave, tape_reading, candle_reading=None):
         items = []
         items.extend(technical.get("confirmations", [])[:4])
         items.extend(volume.get("reasons", [])[:3])
@@ -306,9 +364,11 @@ class LiveTradingIA:
         items.extend(tape_reading.get("confirmations", [])[:2])
         if smc.get("institutional_bias") in ["bullish", "bearish"]:
             items.append(f"Vies institucional {smc.get('institutional_bias')}.")
+        if candle_reading:
+            items.extend(candle_reading.get("confirmations", [])[:4])
         return items
 
-    def _real_invalidations(self, technical, volume, smc, levels):
+    def _real_invalidations(self, technical, volume, smc, levels, candle_reading=None):
         items = []
         current_close = float(self.current["close"])
         previous_close = float(self.previous["close"])
@@ -334,9 +394,12 @@ class LiveTradingIA:
         candle_body_against_sell = direction == "SELL" and current_close > previous_close and current_close > float(self.current["open"])
         if candle_body_against_buy or candle_body_against_sell:
             items.append("Candle fechando contra o setup.")
+        if candle_reading:
+            hard_filters = [item for item in candle_reading.get("anti_fake", {}).get("filters", []) if item in ["falso_rompimento", "falha_de_pullback", "conflito_timeframes"]]
+            items.extend(f"Filtro candle-a-candle: {item.replace('_', ' ')}." for item in hard_filters)
         return list(dict.fromkeys(items))
 
-    def _confirmation_filters(self, technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading):
+    def _confirmation_filters(self, technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading, candle_reading=None):
         items = []
         items.extend(technical.get("invalidations", [])[:4])
         items.extend(smc.get("invalidations", [])[:3])
@@ -360,10 +423,14 @@ class LiveTradingIA:
             items.append("Volume ainda insuficiente para confirmar entrada.")
         if float(levels.get("risk_reward") or 0) < 1:
             items.append("Risco/retorno abaixo do minimo operacional.")
+        if candle_reading:
+            items.extend(candle_reading.get("blockers", [])[:5])
         return list(dict.fromkeys(items))
 
-    def _messages(self, state, score, direction, technical, volume, smc, confirmations, invalidations, wyckoff, elliott_wave, tape_reading):
+    def _messages(self, state, score, direction, technical, volume, smc, confirmations, invalidations, wyckoff, elliott_wave, tape_reading, candle_reading=None):
         messages = ["Analisando estrutura do mercado..."]
+        if candle_reading:
+            messages.extend(candle_reading.get("narrative", [])[:5])
         breakout = technical.get("details", {}).get("breakout", {})
         if breakout.get("detected"):
             messages.append("Rompimento detectado, aguardando confirmacao." if score < 78 else "Rompimento confirmado por confluencia.")

@@ -30,13 +30,13 @@ class OperacionalLiveEngine:
 
     def __init__(self, candles: pd.DataFrame, symbol: str, timeframe: str):
         self.df = candles.copy().dropna(subset=["open", "high", "low", "close"])
-        if len(self.df) < 40:
-            raise ValueError("operacional_live_requires_at_least_40_candles")
         self.symbol = symbol
         self.timeframe = timeframe
         self.reading = build_operacional_reading(self.df, symbol, timeframe)
 
     def analyze(self) -> dict[str, Any]:
+        if not self.reading.get("success"):
+            return self._warming_up()
         context = self.reading.get("operacional_context", {})
         trend = self.reading.get("operacional_trend", {})
         signal = self.reading.get("operacional_signal", {})
@@ -47,9 +47,10 @@ class OperacionalLiveEngine:
         liquidity = self.reading.get("operacional_liquidity", {})
         confirmations = self.reading.get("operacional_confirmations", [])
         invalidations = self.reading.get("operacional_invalidations", [])
+        apostila = self.reading.get("apostila_operacional", {})
 
-        decision = self._decision(context, trend, signal, risk, candle, breakout, pullback, liquidity, confirmations, invalidations)
-        live_messages = self._messages(decision, context, trend, candle, breakout, pullback, liquidity, confirmations, invalidations)
+        decision = self._decision(context, trend, signal, risk, candle, breakout, pullback, liquidity, confirmations, invalidations, apostila)
+        live_messages = self._messages(decision, context, trend, candle, breakout, pullback, liquidity, confirmations, invalidations, apostila)
         levels = self._levels(signal, risk)
 
         return {
@@ -77,6 +78,7 @@ class OperacionalLiveEngine:
             "messages": live_messages,
             "confirmations": confirmations[:8],
             "invalidations": invalidations[:8],
+            "apostila_operacional": apostila,
             "reading": self.reading,
             "signal": self._signal_payload(decision, levels, context),
             "chart_marks": self.reading.get("operacional_chart", {}),
@@ -85,23 +87,62 @@ class OperacionalLiveEngine:
             "disclaimer": DISCLAIMER,
         }
 
-    def _decision(self, context, trend, signal, risk, candle, breakout, pullback, liquidity, confirmations, invalidations):
+    def _warming_up(self):
+        last_price = round(float(self.df["close"].iloc[-1]), 8) if len(self.df) else None
+        message = self.reading.get("narrative", ["Aguardando candles suficientes para aplicar a apostila operacional."])[0]
+        return {
+            "success": True,
+            "module": "live_operacional_grafico",
+            "isolated": True,
+            "symbol": self.symbol,
+            "timeframe": self.timeframe,
+            "status": self.STATES["ANALISANDO"],
+            "state": "ANALISANDO",
+            "direction": "NEUTRO",
+            "confidence": 0,
+            "scenario": "Aquecendo leitura operacional",
+            "context": self.reading.get("operacional_context", {}),
+            "market_status": "AGUARDANDO CANDLES",
+            "movement_strength": "--",
+            "timing": "Aguardar formacao de candles para Dow, 50%, prior cote e padrao de 3 candles.",
+            "risk_reward": None,
+            "entry_aggressive": None,
+            "entry_conservative": None,
+            "stop_loss": None,
+            "take_profit_1": None,
+            "take_profit_2": None,
+            "reason": message,
+            "messages": [message, "Apostila operacional exige contexto minimo antes de executar."],
+            "confirmations": [],
+            "invalidations": self.reading.get("operacional_invalidations", []),
+            "reading": self.reading,
+            "signal": {"symbol": self.symbol, "timeframe": self.timeframe, "direction": "NEUTRO", "status": self.STATES["ANALISANDO"], "confidence": 0},
+            "chart_marks": self.reading.get("operacional_chart", {}),
+            "current_price": last_price,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "disclaimer": DISCLAIMER,
+        }
+
+    def _decision(self, context, trend, signal, risk, candle, breakout, pullback, liquidity, confirmations, invalidations, apostila=None):
+        apostila = apostila or {}
         score = int(self.reading.get("operacional_score", signal.get("score", 0)) or 0)
         bias = trend.get("bias", "neutro")
         rr = float(risk.get("risk_reward") or signal.get("risk_reward") or 0)
+        execution = apostila.get("execution", {})
+        no_trade_filters = apostila.get("no_trade_filters", [])
         strong_candle = int(candle.get("body_strength", 0) or 0) >= 55
         false_breakout = breakout.get("false_breakout")
         pullback_failure = pullback.get("pullback_failure")
         lateral = bias == "lateral" or context.get("label") == "Lateralizacao"
         high_risk = context.get("risk") == "alto" or risk.get("scenario_risk") == "alto" or rr < 1
 
-        if false_breakout or pullback_failure or high_risk:
+        if no_trade_filters or false_breakout or pullback_failure or high_risk:
             return {
                 "state": "NAO_OPERAR",
                 "status": self.STATES["NAO_OPERAR"],
                 "direction": "NEUTRO",
                 "confidence": max(35, min(88, score)),
-                "reason": "Armadilha, falso rompimento, falha de pullback ou risco operacional elevado.",
+                "reason": no_trade_filters[0] if no_trade_filters else "Armadilha, falso rompimento, falha de pullback ou risco operacional elevado.",
             }
         if lateral or len(invalidations) > len(confirmations):
             return {
@@ -111,22 +152,26 @@ class OperacionalLiveEngine:
                 "confidence": max(35, min(82, score)),
                 "reason": "Mercado sem contexto direcional suficiente para executar.",
             }
-        if bias == "alta" and score >= 58 and (pullback.get("valid_pullback") or breakout.get("valid_breakout") or strong_candle):
+        if execution.get("direction") == "COMPRA" and score >= 58 and execution.get("mode") != "aguardar":
             return {
                 "state": "COMPRA",
                 "status": self.STATES["COMPRA"],
                 "direction": "COMPRA",
                 "confidence": min(92, max(score, 58)),
-                "reason": "Contexto comprador com timing operacional favoravel.",
+                "reason": execution.get("reason") or "Contexto comprador com timing operacional favoravel.",
             }
-        if bias == "baixa" and score >= 58 and (pullback.get("valid_pullback") or breakout.get("valid_breakout") or strong_candle):
+        if execution.get("direction") == "VENDA" and score >= 58 and execution.get("mode") != "aguardar":
             return {
                 "state": "VENDA",
                 "status": self.STATES["VENDA"],
                 "direction": "VENDA",
                 "confidence": min(92, max(score, 58)),
-                "reason": "Contexto vendedor com timing operacional favoravel.",
+                "reason": execution.get("reason") or "Contexto vendedor com timing operacional favoravel.",
             }
+        if bias == "alta" and score >= 70 and (pullback.get("valid_pullback") or breakout.get("valid_breakout") or strong_candle):
+            return {"state": "COMPRA", "status": self.STATES["COMPRA"], "direction": "COMPRA", "confidence": min(88, max(score, 70)), "reason": "Contexto comprador, mas manter ordem atras do ponto de parada."}
+        if bias == "baixa" and score >= 70 and (pullback.get("valid_pullback") or breakout.get("valid_breakout") or strong_candle):
+            return {"state": "VENDA", "status": self.STATES["VENDA"], "direction": "VENDA", "confidence": min(88, max(score, 70)), "reason": "Contexto vendedor, mas manter ordem atras do ponto de parada."}
         return {
             "state": "AGUARDAR",
             "status": self.STATES["AGUARDAR"],
@@ -166,8 +211,18 @@ class OperacionalLiveEngine:
             return "CANDLE DE DECISAO"
         return "EM LEITURA"
 
-    def _messages(self, decision, context, trend, candle, breakout, pullback, liquidity, confirmations, invalidations):
+    def _messages(self, decision, context, trend, candle, breakout, pullback, liquidity, confirmations, invalidations, apostila=None):
+        apostila = apostila or {}
         messages = []
+        if apostila.get("reading"):
+            messages.append(apostila["reading"])
+        phase = apostila.get("market_phase", {}).get("phase")
+        if phase:
+            messages.append(f"Fase pela apostila: {phase}.")
+        if apostila.get("dow_50", {}).get("reading"):
+            messages.append(apostila["dow_50"]["reading"])
+        if apostila.get("three_candle_pattern", {}).get("active"):
+            messages.append("Padrao de 3 candles detectado: alvo, negacao e teste.")
         if trend.get("bias") == "alta":
             messages.append("Contexto de alta por topos e fundos.")
         elif trend.get("bias") == "baixa":

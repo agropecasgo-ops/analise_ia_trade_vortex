@@ -3,9 +3,9 @@ class OperacionalLiveDashboard {
         this.symbol = 'BTCUSDT';
         this.currentMarket = 'crypto';
         this.timeframe = '15m';
+        this.chartEngine = null;
         this.chart = null;
         this.candleSeries = null;
-        this.priceLines = [];
         this.lastCandles = [];
         this.socket = null;
         this.statusTimer = null;
@@ -56,31 +56,23 @@ class OperacionalLiveDashboard {
     }
 
     setupChart() {
-        const container = document.getElementById('opLiveChart');
-        if (!container || !window.LightweightCharts) return;
-        this.chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: Math.max(container.clientHeight, 620),
-            layout: { background: { type: 'solid', color: '#05070d' }, textColor: '#F8FAFC' },
-            grid: { horzLines: { color: 'rgba(212,175,55,.07)' }, vertLines: { color: 'rgba(56,189,248,.05)' } },
-            timeScale: { timeVisible: true, secondsVisible: false },
-            rightPriceScale: { borderColor: 'rgba(212,175,55,.2)', scaleMargins: { top: 0.08, bottom: 0.12 } },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-        });
-        this.candleSeries = this.chart.addCandlestickSeries({
-            upColor: '#22C55E',
-            downColor: '#EF4444',
-            borderUpColor: '#22C55E',
-            borderDownColor: '#EF4444',
-            wickUpColor: '#22C55E',
-            wickDownColor: '#EF4444',
-        });
+        this.chartEngine = new window.LiveChartEngine('opLiveChart', {
+            minHeight: 620,
+            watermark: {
+                visible: true,
+                text: 'Live Operacional Grafico',
+                color: 'rgba(56, 189, 248, 0.12)',
+                fontSize: 16,
+                horzAlign: 'right',
+                vertAlign: 'bottom',
+            },
+        }).init();
+        this.chart = this.chartEngine?.chart;
+        this.candleSeries = this.chartEngine?.candleSeries;
     }
 
     resizeChart() {
-        const container = document.getElementById('opLiveChart');
-        if (!container || !this.chart) return;
-        this.chart.applyOptions({ width: container.clientWidth, height: Math.max(container.clientHeight, 620) });
+        this.chartEngine?.resize();
     }
 
     async loadAssets() {
@@ -107,7 +99,7 @@ class OperacionalLiveDashboard {
             this.socket.close();
             this.socket = null;
         }
-        this.clearPriceLines();
+        this.chartEngine?.clearOverlays();
         this.setConnection('Atualizando');
         await this.loadCandles(fit);
         await this.fetchStatus('change');
@@ -121,15 +113,14 @@ class OperacionalLiveDashboard {
             const data = await response.json();
             if (!data.success) throw new Error(data.error || 'candles_unavailable');
             const candles = Array.isArray(data.candles) ? data.candles : [];
-            this.lastCandles = candles;
-            this.candleSeries.setData(candles);
+            this.chartEngine?.setData(candles, data.volumes || [], fit);
+            this.lastCandles = this.chartEngine?.lastCandles || candles;
             const last = candles[candles.length - 1] || {};
             this.streaming = data.streaming ?? String(this.symbol).endsWith('USDT');
             this.setText('opLivePrice', this.formatPrice(last.close));
             this.setText('opLiveChartTitle', `${this.symbol} · ${String(data.source || '--').toUpperCase()} · ${this.timeframe}`);
             this.setText('opLiveDataSource', String(data.source || '--').toUpperCase());
             this.setText('opLiveMarketStatus', this.statusLabel(data.market_status));
-            if (fit) this.chart.timeScale().fitContent();
             this.setConnection(this.streaming ? 'Grafico ativo' : 'REST / historico');
         } catch (error) {
             this.setConnection('Falha REST');
@@ -156,8 +147,8 @@ class OperacionalLiveDashboard {
                 low: Number(kline.l),
                 close: Number(kline.c),
             };
-            this.candleSeries.update(candle);
-            this.lastCandles = [...this.lastCandles.filter((item) => item.time !== candle.time), candle].slice(-260);
+            this.chartEngine?.update(candle);
+            this.lastCandles = this.chartEngine?.lastCandles || [...this.lastCandles.filter((item) => item.time !== candle.time), candle].slice(-260);
             this.setText('opLivePrice', this.formatPrice(candle.close));
             if (kline.x) {
                 this.fetchStatus('new_candle');
@@ -213,7 +204,7 @@ class OperacionalLiveDashboard {
         document.getElementById('opLiveStatusCard').dataset.state = status.state || 'AGUARDAR';
         this.pushMessages(status.messages || []);
         const markers = window.VisualAIOverlays?.buildOperationalMarkers(this.lastCandles, status) || [];
-        window.VisualAIOverlays?.set(this.candleSeries, [], markers);
+        this.chartEngine?.applyMarkers(markers);
         this.renderPriceLines(status.chart_marks?.price_lines || []);
         this.speak(status.messages?.[0] || status.reason || '');
     }
@@ -254,23 +245,12 @@ class OperacionalLiveDashboard {
     }
 
     renderPriceLines(lines) {
-        this.clearPriceLines();
-        lines.forEach((line) => {
-            if (!Number.isFinite(Number(line.price))) return;
-            this.priceLines.push(this.candleSeries.createPriceLine({
-                price: Number(line.price),
-                color: line.color || '#D4AF37',
-                lineWidth: line.type === 'entry' ? 2 : 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: line.label || line.type,
-            }));
-        });
-    }
-
-    clearPriceLines() {
-        this.priceLines.forEach((line) => this.candleSeries.removePriceLine(line));
-        this.priceLines = [];
+        this.chartEngine?.applyLevels((Array.isArray(lines) ? lines : []).map((line) => ({
+            label: line.label || line.type,
+            price: line.price,
+            color: line.color || '#D4AF37',
+            lineWidth: line.type === 'entry' ? 2 : 1,
+        })));
     }
 
     pushMessages(messages) {
