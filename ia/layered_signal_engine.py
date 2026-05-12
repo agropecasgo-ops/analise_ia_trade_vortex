@@ -18,17 +18,25 @@ from .market_structure_engine import MarketStructureEngine
 
 
 class LayeredSignalEngine:
-    def __init__(self, symbol: str, candles_by_timeframe: dict[str, pd.DataFrame], entry_timeframe: str = "1m") -> None:
+    def __init__(
+        self,
+        symbol: str,
+        candles_by_timeframe: dict[str, pd.DataFrame],
+        entry_timeframe: str = "1m",
+        legacy_filters: dict[str, Any] | None = None,
+    ) -> None:
         self.symbol = symbol
         self.candles_by_timeframe = candles_by_timeframe or {}
         self.entry_timeframe = entry_timeframe
+        self.legacy_filters = legacy_filters or {}
 
     def analyze(self) -> dict[str, Any]:
         entry_df = self._entry_candles()
         macro = MacroContextEngine(self.candles_by_timeframe, self.symbol).analyze()
         structure = MarketStructureEngine(entry_df, macro).analyze()
         confirmation = ConfirmationEngine(entry_df, macro, structure).analyze()
-        score = AIScoreEngine().score(macro, structure, confirmation)
+        direction = self._direction(macro, structure, confirmation)
+        score = AIScoreEngine().score(macro, structure, confirmation, {**self.legacy_filters, "direction": direction})
         signal = self._signal(entry_df, macro, structure, confirmation, score)
 
         return {
@@ -41,6 +49,7 @@ class LayeredSignalEngine:
             "market_structure": structure,
             "confirmation": confirmation,
             "ai_score": score,
+            "legacy_filters": score.get("legacy_filters", {}),
             "signal": signal,
         }
 
@@ -62,12 +71,27 @@ class LayeredSignalEngine:
         direction = self._direction(macro, structure, confirmation)
         if entry_df.empty:
             return self._empty_signal("Sem candles para entrada.", score)
+        if macro.get("blocked") or macro.get("direction") not in ["BUY", "SELL"]:
+            reason = (macro.get("blockers") or ["Contexto macro nao aprovado."])[0]
+            return self._empty_signal(reason, score, direction)
+        if not structure.get("valid") or structure.get("direction") not in ["BUY", "SELL"]:
+            reason = (structure.get("blockers") or ["Estrutura nao aprovada."])[0]
+            return self._empty_signal(reason, score, direction)
+        if not confirmation.get("valid") or confirmation.get("direction") not in ["BUY", "SELL"]:
+            reason = (confirmation.get("blockers") or ["Confirmacao nao aprovada."])[0]
+            return self._empty_signal(reason, score, direction)
         if not score.get("approved") or direction not in ["BUY", "SELL"]:
             reason = score.get("blockers", ["Score insuficiente para sinal."])[0]
             return self._empty_signal(reason, score, direction)
 
         entry = float(entry_df["close"].iloc[-1])
         levels = self._levels(entry_df, direction, structure, entry)
+        risk = self._risk_gate(levels)
+        if not risk["allowed"]:
+            reason = risk["blockers"][0]
+            blocked = self._empty_signal(reason, score, direction)
+            blocked["risk_gate"] = risk
+            return blocked
         reason = self._reason(macro, structure, confirmation, score)
         return {
             "generated": True,
@@ -83,6 +107,7 @@ class LayeredSignalEngine:
             "reason": reason,
             "validated_layer": "ai_score",
             "validated_layers": ["macro_context", "market_structure", "confirmation", "ai_score"],
+            "risk_gate": risk,
         }
 
     def _empty_signal(self, reason: str, score: dict[str, Any], direction: str = "NEUTRAL") -> dict[str, Any]:
@@ -100,6 +125,7 @@ class LayeredSignalEngine:
             "reason": reason,
             "validated_layer": None,
             "validated_layers": [],
+            "risk_gate": {"allowed": False, "blockers": [reason]},
         }
 
     def _direction(self, macro: dict[str, Any], structure: dict[str, Any], confirmation: dict[str, Any]) -> str:
@@ -136,6 +162,19 @@ class LayeredSignalEngine:
             "risk_reward": round(rr, 2),
         }
 
+    def _risk_gate(self, levels: dict[str, Any]) -> dict[str, Any]:
+        blockers = []
+        required = ["entry_price", "stop_loss", "take_profit_1"]
+        if any(levels.get(key) is None for key in required):
+            blockers.append("Plano de risco incompleto.")
+        if float(levels.get("risk_reward") or 0) < 1.2:
+            blockers.append(f"Risco/retorno abaixo do minimo: 1:{float(levels.get('risk_reward') or 0):.2f}.")
+        return {
+            "allowed": not blockers,
+            "blockers": blockers,
+            "min_rr": 1.2,
+        }
+
     def _last_swing_price(self, structure: dict[str, Any], side: str) -> float | None:
         items = structure.get("swings", {}).get(side, [])
         if not items:
@@ -168,8 +207,13 @@ class LayeredSignalEngine:
         return f"Sinal liberado por {', '.join(parts)}. Score {score.get('score')}/{score.get('max_score')}."
 
 
-def build_layered_signal(symbol: str, candles_by_timeframe: dict[str, pd.DataFrame], entry_timeframe: str = "1m") -> dict[str, Any]:
-    return LayeredSignalEngine(symbol, candles_by_timeframe, entry_timeframe).analyze()
+def build_layered_signal(
+    symbol: str,
+    candles_by_timeframe: dict[str, pd.DataFrame],
+    entry_timeframe: str = "1m",
+    legacy_filters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return LayeredSignalEngine(symbol, candles_by_timeframe, entry_timeframe, legacy_filters).analyze()
 
 
 def build_layered_signal_from_provider(

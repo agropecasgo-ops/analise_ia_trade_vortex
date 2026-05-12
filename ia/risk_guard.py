@@ -12,7 +12,7 @@ class RiskGuard:
         "max_trades_per_day": 3,
         "max_spread_pct": 0.08,
         "min_rr": 1.2,
-        "min_ai_score": 70,
+        "min_ai_score": 80,
         "allowed_symbols": [],
         "allowed_hours": [0, 24],
         "fixed_quantity": 1,

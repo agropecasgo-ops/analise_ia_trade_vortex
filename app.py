@@ -790,6 +790,25 @@ def load_layered_live_candles(symbol, current_timeframe, current_df):
     return candles
 
 
+def build_legacy_aux_filters(technical=None, volume=None, smc=None, wyckoff=None, tape_reading=None, flow=None):
+    return {
+        "role": "auxiliary_filter_only",
+        "can_generate_signal": False,
+        "technical": technical or {},
+        "volume": volume or {},
+        "smc": smc or {},
+        "wyckoff": wyckoff or {},
+        "tape_reading": tape_reading or flow or {},
+    }
+
+
+def layered_final_signal(layered_signal):
+    signal = (layered_signal or {}).get("signal") or {}
+    if not signal.get("generated"):
+        return "AGUARDAR"
+    return "COMPRA" if signal.get("direction_code") == "BUY" else "VENDA" if signal.get("direction_code") == "SELL" else "AGUARDAR"
+
+
 def apply_layered_signal_to_live_status(status, layered_signal):
     signal = (layered_signal or {}).get("signal", {})
     ai_score = (layered_signal or {}).get("ai_score", {})
@@ -799,15 +818,18 @@ def apply_layered_signal_to_live_status(status, layered_signal):
     generated = bool(signal.get("generated"))
     direction_code = signal.get("direction_code", "NEUTRAL")
     score = int(ai_score.get("score", signal.get("score", 0)) or 0)
+    risk_gate = signal.get("risk_gate") or {}
     blockers = list(dict.fromkeys(
         (macro.get("blockers") or [])
         + (structure.get("blockers") or [])
         + (confirmation.get("blockers") or [])
         + (ai_score.get("blockers") or [])
+        + (risk_gate.get("blockers") or [])
     ))
 
     status["layered_signal"] = layered_signal
     status["signal_engine"] = "layered_signal_engine"
+    status["legacy_indicators_role"] = "auxiliary_filter_only"
     status["confluence_score"] = score
     status["confidence"] = min(95, max(0, score))
     status["probable_direction"] = direction_code if generated else "NEUTRAL"
@@ -1325,6 +1347,37 @@ def get_analysis(symbol, timeframe):
             levels=levels,
             institutional_decision=institutional_decision,
         )
+        layered_signal = build_layered_signal(
+            symbol,
+            load_layered_live_candles(symbol, timeframe, df),
+            entry_timeframe="1m" if timeframe not in {"1m", "2m"} else timeframe,
+            legacy_filters=build_legacy_aux_filters(
+                technical=technical_reading,
+                volume=volume_analysis,
+                smc=smc,
+                wyckoff=wyckoff,
+                tape_reading=tape_reading,
+            ),
+        )
+        authoritative_signal = layered_final_signal(layered_signal)
+        institutional_decision.update({
+            "authoritative_engine": "layered_signal_engine",
+            "authoritative_signal": authoritative_signal,
+            "legacy_indicators_role": "auxiliary_filter_only",
+            "legacy_can_generate_signal": False,
+        })
+        institutional_signal.update({
+            "authoritative_engine": "layered_signal_engine",
+            "authoritative_signal": authoritative_signal,
+            "legacy_indicators_role": "auxiliary_filter_only",
+            "legacy_can_generate_signal": False,
+        })
+        operational_signal.update({
+            "authoritative_engine": "layered_signal_engine",
+            "authoritative_signal": authoritative_signal,
+            "legacy_indicators_role": "auxiliary_filter_only",
+            "legacy_can_generate_signal": False,
+        })
 
         response = {
             "success": True,
@@ -1351,6 +1404,7 @@ def get_analysis(symbol, timeframe):
             "institutional_confluence": institutional_confluence,
             "institutional_decision": institutional_decision,
             "institutional_signal": institutional_signal,
+            "layered_signal": layered_signal,
             "institutional_risk": risk_plan,
             "institutional_narrative": institutional_narrative,
             "institutional_mtf": institutional_mtf,
@@ -1396,7 +1450,9 @@ def get_analysis(symbol, timeframe):
             "final_score": final_score,
             "confluence_ai": confluence_ai,
             "operational_signal": operational_signal,
-            "final_signal": vortex_ai.get("signal") or operational_signal.get("signal") or confluence_ai.get("signal") or final_score.get("signal"),
+            "final_signal": authoritative_signal,
+            "final_signal_engine": "layered_signal_engine",
+            "legacy_indicators_role": "auxiliary_filter_only",
             "market_bias": mtf_confluence.get("dominant_direction") or institutional_payload.get("institutional_bias"),
             "disclaimer": DISCLAIMER,
             "operational_state": operational_state,
@@ -1568,6 +1624,13 @@ def api_live_status(symbol, timeframe):
             symbol,
             load_layered_live_candles(symbol, timeframe, df),
             entry_timeframe="1m" if timeframe not in {"1m", "2m"} else timeframe,
+            legacy_filters=build_legacy_aux_filters(
+                technical=status.get("technical"),
+                volume=status.get("volume"),
+                smc=status.get("smc_context") or status.get("smc"),
+                wyckoff=status.get("wyckoff"),
+                tape_reading=status.get("tape_reading"),
+            ),
         )
         status = apply_layered_signal_to_live_status(status, layered_signal)
         market_meta = market.last_meta(symbol)
@@ -1775,6 +1838,13 @@ def api_live_signals():
             symbol,
             load_layered_live_candles(symbol, timeframe, df),
             entry_timeframe="1m" if timeframe not in {"1m", "2m"} else timeframe,
+            legacy_filters=build_legacy_aux_filters(
+                technical=status.get("technical"),
+                volume=status.get("volume"),
+                smc=status.get("smc_context") or status.get("smc"),
+                wyckoff=status.get("wyckoff"),
+                tape_reading=status.get("tape_reading"),
+            ),
         )
         status = apply_layered_signal_to_live_status(status, layered_signal)
         mtf_confluence = {}
@@ -1816,6 +1886,13 @@ def api_signals_realtime():
             symbol,
             load_layered_live_candles(symbol, timeframe, df),
             entry_timeframe="1m" if timeframe not in {"1m", "2m"} else timeframe,
+            legacy_filters=build_legacy_aux_filters(
+                technical=status.get("technical"),
+                volume=status.get("volume"),
+                smc=status.get("smc_context") or status.get("smc"),
+                wyckoff=status.get("wyckoff"),
+                tape_reading=status.get("tape_reading"),
+            ),
         )
         status = apply_layered_signal_to_live_status(status, layered_signal)
         status.update({

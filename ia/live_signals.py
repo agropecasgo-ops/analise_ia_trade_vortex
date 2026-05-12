@@ -43,12 +43,15 @@ class SignalScoreService:
     def allowed(self, live_status: dict[str, Any]) -> tuple[bool, list[str]]:
         layered = live_status.get("layered_signal") or {}
         signal = layered.get("signal") or {}
+        risk_gate = signal.get("risk_gate") or {}
         score = _num((layered.get("ai_score") or {}).get("score"), _num(live_status.get("confluence_score")))
         reasons = []
         if not signal.get("generated"):
             reasons.append(signal.get("reason") or "Engine por camadas nao gerou sinal.")
         if score < 80:
             reasons.append(f"Score {score:.0f} abaixo do minimo 80.")
+        if risk_gate and not risk_gate.get("allowed"):
+            reasons.extend(risk_gate.get("blockers") or ["Bloqueio de risco ativo."])
         if live_status.get("state") not in ["BUY_CONFIRMED", "SELL_CONFIRMED"]:
             reasons.append("Sem confirmacao final das camadas.")
         if live_status.get("layered_signal", {}).get("macro_context", {}).get("blocked"):
