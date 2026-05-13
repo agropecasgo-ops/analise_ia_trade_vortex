@@ -80,16 +80,21 @@
         const breakout = reading.operacional_breakout || reading.breakout || {};
         const pullback = reading.operacional_pullback || reading.pullback || {};
         const liquidity = reading.operacional_liquidity || reading.liquidity || {};
+        const manipulation = readingOrStatus.manipulation || (reading.institutional_map || {}).manipulation || {};
+        const fractal = readingOrStatus.fractal || (reading.institutional_map || {}).fractal || {};
+        const behavior = readingOrStatus.behavior || (reading.institutional_map || {}).behavior || {};
+        const threeCandle = readingOrStatus.three_candle_pattern || reading.three_candle_pattern || (reading.institutional_map || {}).three_candle_pattern || {};
         const time = candle.time || last.time;
         const markers = [];
 
         if (signal.direction && signal.direction !== 'NEUTRO') {
+            const isBuy = String(signal.direction).toUpperCase().startsWith('COMPRA');
             markers.push(marker(
                 time,
-                signal.direction === 'COMPRA' ? 'belowBar' : 'aboveBar',
-                signal.direction === 'COMPRA' ? 'arrowUp' : 'arrowDown',
+                isBuy ? 'belowBar' : 'aboveBar',
+                isBuy ? 'arrowUp' : 'arrowDown',
                 directionColor(signal.direction),
-                signal.direction
+                compact(signal.direction)
             ));
         }
         if (pullback.valid_pullback) markers.push(marker(time, 'belowBar', 'circle', '#38BDF8', 'Pullback saudavel'));
@@ -97,10 +102,18 @@
         if (breakout.valid_breakout) markers.push(marker(time, 'aboveBar', 'arrowUp', '#FACC15', 'Rompimento'));
         if (breakout.false_breakout) markers.push(marker(time, 'aboveBar', 'circle', '#F97316', 'Sem continuidade'));
         if (liquidity.sweep) markers.push(marker(time, 'aboveBar', 'circle', '#A78BFA', 'Liquidez'));
+        if (manipulation.detected) markers.push(marker(time, 'aboveBar', 'circle', '#F97316', 'Manipulacao'));
+        if (fractal.conflict) markers.push(marker(time, 'aboveBar', 'circle', '#FACC15', 'Conflito fractal'));
+        if (behavior.acceleration) markers.push(marker(time, 'belowBar', 'circle', '#22C55E', 'Aceleracao'));
+        if (behavior.loss_of_strength) markers.push(marker(time, 'aboveBar', 'circle', '#FB7185', 'Perda forca'));
+        if (behavior.absorption) markers.push(marker(time, 'aboveBar', 'circle', '#38BDF8', 'Absorcao'));
+        if (threeCandle.candle1?.time) markers.push(marker(threeCandle.candle1.time, 'aboveBar', 'circle', '#D4AF37', '3C alvo'));
+        if (threeCandle.candle2?.time) markers.push(marker(threeCandle.candle2.time, 'aboveBar', 'circle', '#F97316', '3C nega'));
+        if (threeCandle.candle3?.time) markers.push(marker(threeCandle.candle3.time, threeCandle.direction === 'COMPRA' ? 'belowBar' : 'aboveBar', threeCandle.direction === 'COMPRA' ? 'arrowUp' : threeCandle.direction === 'VENDA' ? 'arrowDown' : 'circle', '#38BDF8', '3C teste'));
         if (Number(candle.upper_wick_pct || 0) >= 42) markers.push(marker(time, 'aboveBar', 'circle', '#F59E0B', 'Rejeicao topo'));
         if (Number(candle.lower_wick_pct || 0) >= 42) markers.push(marker(time, 'belowBar', 'circle', '#22C55E', 'Rejeicao fundo'));
         if (Number(candle.body_strength || 0) >= 65) markers.push(marker(time, 'belowBar', 'circle', '#D4AF37', 'Candle decisao'));
-        return markers.filter(Boolean).slice(-8);
+        return markers.filter(Boolean).slice(-12);
     }
 
     function set(series, baseMarkers, overlayMarkers) {

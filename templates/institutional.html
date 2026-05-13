@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}An&aacute;lise IA Institucional - FinanceAI{% endblock %}
+
+{% block content %}
+<div class="institutional-shell">
+    <section class="institutional-header">
+        <div>
+            <span class="institutional-kicker">Unified Institutional AI</span>
+            <h1>An&aacute;lise IA Institucional</h1>
+            <p>Contexto, liquidez, camadas e risco em um contrato unico de decisao.</p>
+        </div>
+        <div class="institutional-state">
+            <span id="institutionalStateDot"></span>
+            <strong id="institutionalDeskState">PRONTO</strong>
+            <small id="institutionalUpdated">--</small>
+        </div>
+    </section>
+
+    <section class="institutional-controls">
+        <div class="institutional-field">
+            <label for="institutionalAssetType">Tipo de ativo</label>
+            <select id="institutionalAssetType" class="institutional-input">
+                <option value="crypto">Criptomoedas</option>
+                <option value="forex">Forex</option>
+                <option value="futures_b3">Futuros B3</option>
+                <option value="commodity">Commodities</option>
+                <option value="index">Indices</option>
+                <option value="br_stock">Acoes brasileiras</option>
+                <option value="us_stock">Acoes americanas</option>
+            </select>
+        </div>
+        <div class="institutional-field">
+            <label for="institutionalAsset">Ativo</label>
+            <select id="institutionalAsset" class="institutional-input">
+                <option value="BTCUSDT">BTCUSDT - Bitcoin / USDT</option>
+            </select>
+        </div>
+        <div class="institutional-field">
+            <label for="institutionalTimeframe">Timeframe</label>
+            <select id="institutionalTimeframe" class="institutional-input">
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m" selected>15m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+                <option value="1d">1d</option>
+            </select>
+        </div>
+        <button id="institutionalGenerate" class="institutional-run" type="button">
+            <i class="fas fa-wand-magic-sparkles"></i>
+            <span>Gerar An&aacute;lise IA</span>
+        </button>
+        <button id="replayLoadBtn" class="institutional-run replay-run" type="button">
+            <i class="fas fa-clock-rotate-left"></i>
+            <span>Replay IA</span>
+        </button>
+        <button id="institutionalModeToggle" class="institutional-run mode-run active" type="button" aria-pressed="true">
+            <i class="fas fa-building-shield"></i>
+            <span>Modo Institucional</span>
+        </button>
+    </section>
+
+    <div class="institutional-grid">
+        <section class="institutional-chart-panel">
+            <div class="institutional-panel-title">
+                <div>
+                    <span>Grafico contextual</span>
+                    <strong id="institutionalChartTitle">BTCUSDT - 15m</strong>
+                </div>
+                <button id="institutionalFitChart" class="institutional-icon-btn" type="button" title="Ajustar grafico">
+                    <i class="fas fa-expand"></i>
+                </button>
+            </div>
+            <div id="institutionalChart" class="institutional-chart"></div>
+        </section>
+
+        <aside class="institutional-decision-card">
+            <span>Direcao institucional</span>
+            <strong id="institutionalDirection">NEUTRO</strong>
+            <p id="institutionalStatus">Aguardando analise.</p>
+            <div class="institutional-probabilities">
+                <div><span>Compra</span><strong id="probBuy">0%</strong></div>
+                <div><span>Venda</span><strong id="probSell">0%</strong></div>
+                <div><span>Neutro</span><strong id="probSideways">0%</strong></div>
+            </div>
+        </aside>
+    </div>
+
+    <section class="institutional-metrics">
+        <div class="institutional-metric"><span>Confianca</span><strong id="institutionalConfidence">--</strong></div>
+        <div class="institutional-metric"><span>Score IA</span><strong id="institutionalScore">--</strong></div>
+        <div class="institutional-metric"><span>Risco/Retorno</span><strong id="institutionalRR">--</strong></div>
+        <div class="institutional-metric"><span>Timing</span><strong id="institutionalTiming">--</strong></div>
+    </section>
+
+    <section class="institutional-panels">
+        <article class="institutional-card">
+            <div class="institutional-card-title">Estrutura de mercado</div>
+            <div id="marketStructurePanel" class="institutional-list"></div>
+        </article>
+        <article class="institutional-card">
+            <div class="institutional-card-title">Liquidez institucional</div>
+            <div id="liquidityPanel" class="institutional-list"></div>
+        </article>
+        <article class="institutional-card">
+            <div class="institutional-card-title">Plano de trade</div>
+            <div class="institutional-levels">
+                <div><span>Entrada</span><strong id="planEntry">--</strong></div>
+                <div><span>Stop</span><strong id="planStop">--</strong></div>
+                <div><span>Alvo 1</span><strong id="planTp1">--</strong></div>
+                <div><span>Alvo 2</span><strong id="planTp2">--</strong></div>
+                <div><span>Alvo final</span><strong id="planFinal">--</strong></div>
+            </div>
+        </article>
+        <article class="institutional-card">
+            <div class="institutional-card-title">Noticias</div>
+            <div id="newsPanel" class="institutional-list"></div>
+        </article>
+    </section>
+
+    <section class="institutional-explanation-card">
+        <div class="institutional-card-title">Explicacao da IA</div>
+        <p id="institutionalExplanation">Aguardando a primeira leitura institucional.</p>
+        <small>Analise educativa. Nao constitui recomendacao financeira. Toda operacao envolve risco.</small>
+    </section>
+
+    <section class="institutional-narrative-card" id="institutionalNarrativeCard" data-status="AGUARDAR">
+        <div class="institutional-panel-title">
+            <div>
+                <span>Narrativa da IA</span>
+                <strong id="institutionalModeStatus">AGUARDAR</strong>
+            </div>
+            <span class="mode-badge" id="institutionalModeBadge">Modo Institucional ativo</span>
+        </div>
+        <p id="narrativeSummary">Aguardando narrativa institucional.</p>
+        <div class="narrative-grid">
+            <div><span>Direcao provavel</span><strong id="narrativeDirection">--</strong></div>
+            <div><span>Motivo</span><strong id="narrativeReason">--</strong></div>
+            <div><span>Liquidez</span><strong id="narrativeLiquidity">--</strong></div>
+            <div><span>Comportamento</span><strong id="narrativeBehavior">--</strong></div>
+            <div><span>Risco</span><strong id="narrativeRisk">--</strong></div>
+            <div><span>Entrada</span><strong id="narrativeEntry">--</strong></div>
+            <div><span>Cancelamento</span><strong id="narrativeCancel">--</strong></div>
+        </div>
+    </section>
+
+    <section class="institutional-visual-grid">
+        <article class="institutional-card heatmap-card">
+            <div class="institutional-card-title">Heatmap de Forca</div>
+            <div class="heatmap-summary" id="heatmapSummary">Aguardando leitura.</div>
+            <div class="heatmap-extremes">
+                <div><span>Mais forte</span><strong id="heatmapStrongest">--</strong></div>
+                <div><span>Mais fraco</span><strong id="heatmapWeakest">--</strong></div>
+            </div>
+            <div class="force-heatmap-grid" id="forceHeatmapGrid"></div>
+        </article>
+        <article class="institutional-card liquidity-map-card">
+            <div class="institutional-card-title">Mapa de Liquidez</div>
+            <div class="heatmap-summary" id="liquidityMapSummary">Aguardando mapa.</div>
+            <div class="liquidity-zone-list" id="liquidityMapList"></div>
+        </article>
+    </section>
+
+    <section class="institutional-learning-grid">
+        <article class="institutional-card performance-card-ai">
+            <div class="institutional-card-title">Performance IA</div>
+            <div class="performance-kpis">
+                <div><span>Win rate</span><strong id="perfWinRate">--</strong></div>
+                <div><span>Payoff</span><strong id="perfPayoff">--</strong></div>
+                <div><span>Drawdown</span><strong id="perfDrawdown">--</strong></div>
+                <div><span>Break Even</span><strong id="perfBreakEven">--</strong></div>
+                <div><span>R/R medio</span><strong id="perfAverageRR">--</strong></div>
+            </div>
+            <div class="learning-report" id="performanceReport"></div>
+        </article>
+        <article class="institutional-card adaptive-card-ai">
+            <div class="institutional-card-title">Aprendizado Adaptativo</div>
+            <div class="adaptive-status-row">
+                <div><span>Agressividade</span><strong id="adaptiveAggressiveness">--</strong></div>
+                <div><span>Score minimo</span><strong id="adaptiveScore">--</strong></div>
+            </div>
+            <p id="adaptiveExplanation">Aguardando historico de performance.</p>
+            <div class="learning-report" id="adaptiveReport"></div>
+        </article>
+    </section>
+
+    <section class="institutional-replay-card">
+        <div class="institutional-panel-title">
+            <div>
+                <span>Replay IA candle a candle</span>
+                <strong id="replaySummary">Carregue um replay para revisar eventos institucionais.</strong>
+            </div>
+            <div class="replay-controls">
+                <button id="replayPlayPause" class="institutional-icon-btn" type="button" title="Iniciar ou pausar replay">
+                    <i class="fas fa-play"></i>
+                </button>
+                <button id="replayStepBtn" class="institutional-icon-btn" type="button" title="Avancar um candle">
+                    <i class="fas fa-forward-step"></i>
+                </button>
+            </div>
+        </div>
+        <div class="replay-status-grid">
+            <div><span>Candle</span><strong id="replayCandleIndex">--</strong></div>
+            <div><span>Tendencia</span><strong id="replayTrend">--</strong></div>
+            <div><span>Score IA</span><strong id="replayScore">--</strong></div>
+            <div><span>Fase</span><strong id="replayPhase">--</strong></div>
+        </div>
+        <div class="replay-progress">
+            <i id="replayProgressBar"></i>
+        </div>
+        <div class="replay-current-explanation" id="replayCurrentExplanation">Replay parado.</div>
+        <div class="replay-events" id="replayEvents">
+            <div class="replay-empty">Nenhum evento carregado.</div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/lightweight-charts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>
+<script src="{{ url_for('static', filename='js/market-data-engine.js') }}"></script>
+<script src="{{ url_for('static', filename='js/institutional-desk.js') }}"></script>
+<script src="{{ url_for('static', filename='js/replay-engine.js') }}"></script>
+{% endblock %}

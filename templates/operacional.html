@@ -5,7 +5,7 @@
 {% block content %}
 <div class="operacional-shell">
     <div class="risk-disclaimer">
-        Leitura grafica educativa baseada em contexto operacional. Nao constitui recomendacao financeira.
+        Leitura institucional candle a candle baseada em liquidez, stops, 50%, gatilhos, manipulacao e obrigacao do preco.
     </div>
 
     <section class="operacional-toolbar">
@@ -85,8 +85,13 @@
             <div class="operacional-candle-flow" id="opCandleFlow"></div>
         </section>
 
+        <section class="analysis-card operacional-three-candle-card">
+            <div class="card-title">Padrão de 3 Candles</div>
+            <div class="validation-stack operacional-stack" id="opThreeCandlePattern"></div>
+        </section>
+
         <section class="analysis-card">
-            <div class="card-title">Estrutura e Zonas</div>
+                <div class="card-title">Mapa Institucional</div>
             <div class="validation-stack operacional-stack" id="opStructure"></div>
         </section>
 
@@ -98,6 +103,12 @@
         <section class="analysis-card">
             <div class="card-title">Invalidacoes</div>
             <div class="live-invalidations" id="opInvalidations"></div>
+        </section>
+
+        <section class="analysis-card operacional-calibration-card">
+            <div class="card-title">Calibracao Candle a Candle</div>
+            <div class="validation-stack operacional-stack" id="opCalibrationSummary"></div>
+            <div class="operacional-calibration-list" id="opCalibrationLog"></div>
         </section>
 
         <section class="analysis-card">
@@ -118,7 +129,7 @@
         </section>
 
         <section class="analysis-card operacional-signal-card">
-            <div class="card-title">Sinais Operacionais Graficos</div>
+            <div class="card-title">Plano Institucional Contextual</div>
             <div class="validation-stack operacional-stack" id="opSignalBox"></div>
         </section>
     </div>

@@ -58,6 +58,23 @@ class SignalScoreService:
             reasons.extend(live_status["layered_signal"]["macro_context"].get("blockers", []))
         if live_status.get("layered_signal", {}).get("confirmation", {}).get("blockers"):
             reasons.extend(live_status["layered_signal"]["confirmation"].get("blockers", []))
+        institutional = live_status.get("institutional_unified") or {}
+        if institutional:
+            macro = institutional.get("macroContext") or {}
+            volatility = macro.get("volatility") or {}
+            news = institutional.get("news") or {}
+            risk = institutional.get("risk") or {}
+
+            if macro.get("lateral") or (institutional.get("probabilities") or {}).get("sideways", 0) >= 55:
+                reasons.append("Mercado lateral bloqueado pela IA institucional.")
+            if str(volatility.get("state", "")).upper() in {"LOW", "BAIXA", "VERY_LOW"}:
+                reasons.append("Volatilidade baixa bloqueada pela IA institucional.")
+            if news.get("blocking") or str(news.get("impact", "")).upper() in {"HIGH_BLOCKING", "DANGEROUS"}:
+                reasons.append("Noticia forte bloqueia novo sinal.")
+            if risk and risk.get("allowed") is False:
+                reasons.append(risk.get("reason") or "Risco bloqueado pela IA institucional.")
+            if institutional.get("status") in {"DANGEROUS_MARKET", "NO_TRADE"}:
+                reasons.append("Status institucional bloqueia novo sinal.")
         return not reasons, list(dict.fromkeys(reasons))
 
 

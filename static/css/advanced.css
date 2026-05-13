@@ -3115,6 +3115,70 @@ select option {
     line-height: 1.4;
 }
 
+.operacional-three-candle-card {
+    border-top-color: rgba(212, 175, 55, 0.32) !important;
+}
+
+.operacional-three-candle-card .operacional-stack div:first-child strong,
+.operacional-three-candle-card .operacional-stack div:nth-child(2) strong {
+    color: #F5C542;
+}
+
+.operacional-calibration-card {
+    border-top-color: rgba(56, 189, 248, 0.28) !important;
+}
+
+.operacional-calibration-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.operacional-calibration-item {
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-left: 3px solid rgba(148, 163, 184, 0.35);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(9, 13, 22, 0.72);
+}
+
+.operacional-calibration-item.positive {
+    border-left-color: #22C55E;
+}
+
+.operacional-calibration-item.negative {
+    border-left-color: #EF4444;
+}
+
+.operacional-calibration-item.wait {
+    border-left-color: #F5C542;
+}
+
+.operacional-calibration-item div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.operacional-calibration-item strong {
+    color: #E5E7EB;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+}
+
+.operacional-calibration-item span,
+.operacional-calibration-item small {
+    color: #94A3B8;
+    font-size: 0.74rem;
+}
+
+.operacional-calibration-item p {
+    margin: 6px 0;
+    color: #CBD5E1;
+    line-height: 1.35;
+}
+
 @media (max-width: 1280px) {
     .operacional-grid,
     .operacional-toolbar {

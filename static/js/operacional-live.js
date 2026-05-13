@@ -193,14 +193,17 @@ class OperacionalLiveDashboard {
         this.setText('opLiveConfidence', `${Math.round(Number(status.confidence || 0))}%`);
         this.setText('opLiveStrength', status.movement_strength || '--');
         this.setText('opLiveRiskReward', Number.isFinite(Number(status.risk_reward)) ? `1:${Number(status.risk_reward).toFixed(2)}` : '--');
-        this.setText('opLiveAggressive', status.entry_aggressive ? 'SIM' : 'NAO');
-        this.setText('opLiveConservative', status.entry_conservative ? 'SIM' : 'NAO');
+        this.setText('opLiveAggressive', status.price_obligation?.status ? `${status.price_obligation.status} / ${status.price_obligation.kind}` : status.price_obligation?.kind || '--');
+        this.setText('opLiveConservative', status.three_candle_pattern?.status ? `3C ${status.three_candle_pattern.status} / ${status.three_candle_pattern.score}` : status.fractal?.dominant_timeframe ? `${status.active_trigger?.active || '--'} / ${status.fractal.dominant_timeframe}` : status.active_trigger?.active || '--');
         this.setText('opLiveEntry', this.formatPrice(status.entry_aggressive));
         this.setText('opLiveStop', this.formatPrice(status.stop_loss));
         this.setText('opLiveTake1', this.formatPrice(status.take_profit_1));
         this.setText('opLiveTake2', this.formatPrice(status.take_profit_2));
-        this.setText('opLiveReason', status.reason || '--');
-        this.setText('opLiveMarketStatus', status.market_status || status.market_status_raw || '--');
+        this.setText('opLiveReason', status.three_candle_pattern?.explanation ? `${status.three_candle_pattern.explanation} ${status.reason || ''}` : status.behavior?.intention ? `${status.behavior.intention} ${status.reason || ''}` : status.reason || '--');
+        if (Array.isArray(status.operation_blockers) && status.operation_blockers.length) {
+            this.setText('opLiveReason', status.operation_blockers.slice(0, 2).join(' / '));
+        }
+        this.setText('opLiveMarketStatus', status.fractal?.conflict ? 'CONFLITO FRACTAL' : status.market_status || status.market_status_raw || '--');
         document.getElementById('opLiveStatusCard').dataset.state = status.state || 'AGUARDAR';
         this.pushMessages(status.messages || []);
         const markers = window.VisualAIOverlays?.buildOperationalMarkers(this.lastCandles, status) || [];
@@ -233,13 +236,15 @@ class OperacionalLiveDashboard {
                     <div><span>Conf.</span><strong>${Math.round(Number(signal.confidence || 0))}%</strong></div>
                     <div><span>Status</span><strong>${this.escape(signal.status)}</strong></div>
                     <div><span>R/R</span><strong>${signal.risk_reward ? `1:${Number(signal.risk_reward).toFixed(2)}` : '--'}</strong></div>
+                    <div><span>Bloqueio</span><strong>${signal.blocked ? 'SIM' : 'NAO'}</strong></div>
                 </div>
                 <div class="live-signal-levels">
                     <div><span>Entrada</span><strong>${this.formatPrice(signal.entry)}</strong></div>
                     <div><span>Stop</span><strong>${this.formatPrice(signal.stop_loss)}</strong></div>
                     <div><span>Alvo</span><strong>${this.formatPrice(signal.take_profit_1)}</strong></div>
                 </div>
-                <p class="live-signal-reason">${this.escape(signal.reason || '--')}</p>
+                <p class="live-signal-reason">${this.escape(signal.blocked ? (signal.operation_blockers || []).join(' / ') : signal.reason || signal.explanation || '--')}</p>
+                <p class="live-signal-reason">${this.escape(signal.three_candle_pattern?.status ? `3 candles: ${signal.three_candle_pattern.status} / ${signal.three_candle_pattern.score}` : '')}</p>
             </article>
         `).join('');
     }

@@ -1,5 +1,6 @@
 import os
 import math
+import sys
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -26,7 +27,12 @@ from ia.institutional import OperationalValidator, PatternLearner, ProfessionalB
 from ia.flow_engine import build_flow_context
 from ia.institutional_confluence_engine import build_institutional_confluence
 from ia.institutional_decision_engine import build_institutional_decision
+from ia.institutional_mode_engine import build_institutional_mode
+from ia.institutional_narrator import build_institutional_narrative
 from ia.institutional_signal_engine import build_institutional_signal
+from ia.institutional_unified_engine import build_institutional_unified_analysis
+from ia.force_heatmap_engine import build_force_heatmap
+from ia.liquidity_visual_engine import build_liquidity_visual_map
 from ia.layered_signal_engine import build_layered_signal
 from ia.live_trading import build_live_status
 from ia.live_signals import LiveSignalManager
@@ -40,6 +46,7 @@ from ia.operacional_live_engine import build_operacional_live_status
 from ia.operacional_reader import build_candle_flow, build_operacional_context, build_operacional_reading
 from ia.overlay_engine import OverlayEngine
 from ia.risk_engine import build_risk_plan
+from ia.replay_engine import build_replay_analysis
 from ia.smart_money import analyze_smart_money
 from ia.smc_engine import build_smc_context
 from ia.technical_reader import read_technical
@@ -66,7 +73,14 @@ from ia.user_store import (
 )
 
 
-app = Flask(__name__)
+BASE_DIR = getattr(sys, "_MEIPASS", os.path.abspath(os.path.dirname(__file__)))
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+)
+from ia.performance_stats_engine import build_performance_stats
+from ia.adaptive_learning_engine import build_adaptive_status
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 init_db()
 
@@ -597,6 +611,7 @@ def get_cached_chart_payload(symbol, timeframe, limit):
 
 def operacional_chart_payload(df, symbol, timeframe):
     candles = []
+    volumes = []
     for idx, row in df.tail(500).iterrows():
         timestamp = int(idx.timestamp()) if hasattr(idx, "timestamp") else len(candles)
         candles.append({
@@ -605,6 +620,11 @@ def operacional_chart_payload(df, symbol, timeframe):
             "high": float(row.high),
             "low": float(row.low),
             "close": float(row.close),
+        })
+        volumes.append({
+            "time": timestamp,
+            "value": float(getattr(row, "volume", 0) or 0),
+            "color": "rgba(56, 189, 248, 0.32)" if float(row.close) >= float(row.open) else "rgba(248, 113, 113, 0.28)",
         })
     return {
         "success": True,
@@ -618,6 +638,7 @@ def operacional_chart_payload(df, symbol, timeframe):
             "indicators": [],
         },
         "candles": candles,
+        "volumes": volumes,
         "overlays": {},
         "indicators": [],
         "message": "Candles puros para leitura grafica operacional, sem indicadores padrao.",
@@ -981,6 +1002,12 @@ def signals():
     return render_template("signals.html")
 
 
+@app.route("/institutional")
+@login_required
+def institutional():
+    return render_template("institutional.html")
+
+
 @app.route("/operacional")
 @login_required
 def operacional():
@@ -1110,6 +1137,148 @@ def get_candles(symbol, timeframe):
             }))
         except Exception as fallback_error:
             return jsonify({"success": False, "error": str(fallback_error), "candles": [], "volumes": [], "overlays": {}}), 200
+
+
+@app.route("/api/institutional/analysis/<symbol>/<timeframe>")
+def api_institutional_analysis(symbol, timeframe):
+    requested_symbol = normalize_symbol(symbol)
+    timeframe = normalize_timeframe(timeframe)
+    asset_type = request.args.get("assetType") or market.identify_market(requested_symbol)
+    try:
+        limit = int(request.args.get("limit", 320))
+        df = load_market_data(requested_symbol, timeframe, limit)
+        candles_by_timeframe = load_layered_live_candles(requested_symbol, timeframe, df)
+        news = {
+            "available": False,
+            "impact": "UNKNOWN",
+            "blocking": False,
+            "source": "internal",
+            "items": [],
+            "message": "Calendario de noticias nao conectado nesta leitura.",
+        }
+        institutional_payload = build_institutional_unified_analysis(
+            candles=df,
+            asset=requested_symbol,
+            timeframe=timeframe,
+            asset_type=asset_type,
+            candles_by_timeframe=candles_by_timeframe,
+            news=news,
+            risk_status={"allowed": True, "rejections": []},
+        )
+        mode_payload = build_institutional_mode(institutional_payload)
+        narrative = build_institutional_narrative(institutional_payload, mode_payload)
+        return jsonify(sanitize_json({
+            "success": True,
+            "symbol": requested_symbol,
+            "timeframe": timeframe,
+            "assetType": asset_type,
+            "institutional": institutional_payload,
+            "institutionalMode": mode_payload,
+            "aiNarrative": narrative,
+        }))
+    except Exception as error:
+        return jsonify(sanitize_json({
+            "success": False,
+            "symbol": requested_symbol,
+            "timeframe": timeframe,
+            "assetType": asset_type,
+            "error": str(error),
+        })), 200
+
+
+@app.route("/api/institutional/replay")
+def api_institutional_replay():
+    requested_symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
+    timeframe = normalize_timeframe(request.args.get("timeframe", "15m"))
+    asset_type = request.args.get("assetType") or market.identify_market(requested_symbol)
+    try:
+        limit = int(request.args.get("limit", 180))
+        df = load_market_data(requested_symbol, timeframe, max(limit, 120))
+        replay = build_replay_analysis(df, requested_symbol, timeframe, asset_type, max_candles=limit)
+        return jsonify(sanitize_json(replay))
+    except Exception as error:
+        return jsonify(sanitize_json({
+            "success": False,
+            "symbol": requested_symbol,
+            "timeframe": timeframe,
+            "events": [],
+            "frames": [],
+            "error": str(error),
+        })), 200
+
+
+@app.route("/api/institutional/heatmap")
+def api_institutional_heatmap():
+    requested_symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
+    market_key = request.args.get("market") or market.identify_market(requested_symbol)
+    timeframes = [item.strip() for item in request.args.get("timeframes", "5m,15m,1h,4h").split(",") if item.strip()]
+    try:
+        raw_symbols = [item.strip().upper() for item in request.args.get("symbols", "").split(",") if item.strip()]
+        if raw_symbols:
+            symbols = raw_symbols
+        else:
+            assets = market.get_assets(market_key)
+            symbols = [requested_symbol]
+            for item in assets:
+                candidate = normalize_symbol(item.get("symbol") if isinstance(item, dict) else item)
+                if candidate and candidate not in symbols:
+                    symbols.append(candidate)
+                if len(symbols) >= 5:
+                    break
+        heatmap = build_force_heatmap(
+            symbols=symbols,
+            timeframes=timeframes[:5],
+            candle_loader=lambda sym, tf, lim: load_market_data(sym, tf, lim),
+            asset_type_resolver=lambda sym: market.identify_market(sym),
+            limit=int(request.args.get("limit", 220)),
+        )
+        return jsonify(sanitize_json(heatmap))
+    except Exception as error:
+        return jsonify(sanitize_json({
+            "success": False,
+            "symbols": [requested_symbol],
+            "timeframes": timeframes,
+            "cells": [],
+            "summary": str(error),
+        })), 200
+
+
+@app.route("/api/institutional/liquidity-map")
+def api_institutional_liquidity_map():
+    requested_symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
+    timeframe = normalize_timeframe(request.args.get("timeframe", "15m"))
+    try:
+        limit = int(request.args.get("limit", 240))
+        df = load_market_data(requested_symbol, timeframe, limit)
+        liquidity_map = build_liquidity_visual_map(df, requested_symbol, timeframe)
+        return jsonify(sanitize_json(liquidity_map))
+    except Exception as error:
+        return jsonify(sanitize_json({
+            "success": False,
+            "symbol": requested_symbol,
+            "timeframe": timeframe,
+            "zones": [],
+            "markers": [],
+            "summary": str(error),
+        })), 200
+
+
+@app.route("/api/institutional/performance")
+def api_institutional_performance():
+    limit = int(request.args.get("limit", 300))
+    history = live_signal_manager.list_history(limit)
+    active = live_signal_manager.list_active()
+    stats = build_performance_stats(history, active)
+    return jsonify(sanitize_json({"success": True, **stats}))
+
+
+@app.route("/api/institutional/adaptive-status")
+def api_institutional_adaptive_status():
+    limit = int(request.args.get("limit", 300))
+    history = live_signal_manager.list_history(limit)
+    performance = build_performance_stats(history, live_signal_manager.list_active())
+    adaptive = build_adaptive_status(performance, history)
+    return jsonify(sanitize_json({"success": True, **adaptive}))
 
 
 @app.route("/api/analysis/<symbol>/<timeframe>")
@@ -1968,8 +2137,9 @@ def api_operacional_analysis(symbol, timeframe):
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
+        fractal_frames = load_layered_live_candles(symbol, timeframe, df)
         meta = market.last_meta(symbol)
-        payload = build_operacional_reading(df, symbol, timeframe)
+        payload = build_operacional_reading(df, symbol, timeframe, fractal_frames)
         payload.update({
             "source": meta.get("source"),
             "market": meta.get("market"),
@@ -2019,7 +2189,8 @@ def api_operacional_live(symbol, timeframe):
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
-        reading = build_operacional_reading(df, symbol, timeframe)
+        fractal_frames = load_layered_live_candles(symbol, timeframe, df)
+        reading = build_operacional_reading(df, symbol, timeframe, fractal_frames)
         signal = reading.get("operacional_signal", {})
         return jsonify(sanitize_json({
             "success": True,
@@ -2047,7 +2218,8 @@ def api_operacional_signals(symbol, timeframe):
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
-        reading = build_operacional_reading(df, symbol, timeframe)
+        fractal_frames = load_layered_live_candles(symbol, timeframe, df)
+        reading = build_operacional_reading(df, symbol, timeframe, fractal_frames)
         return jsonify(sanitize_json({
             "success": True,
             "module": "operacional_leitura_grafica",
@@ -2067,7 +2239,8 @@ def api_operacional_signals(symbol, timeframe):
 
 def register_operacional_live_signal(status):
     signal = status.get("signal") or {}
-    if signal.get("direction") not in ["COMPRA", "VENDA"]:
+    direction = str(signal.get("direction") or "").upper()
+    if not (direction.startswith("COMPRA") or direction.startswith("VENDA")):
         return None
     signature = f"{signal.get('symbol')}:{signal.get('timeframe')}:{signal.get('direction')}:{signal.get('entry')}:{signal.get('stop_loss')}"
     if operacional_live_signals and operacional_live_signals[-1].get("signature") == signature:
@@ -2088,7 +2261,8 @@ def api_operacional_live_status(symbol, timeframe):
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
-        status = build_operacional_live_status(df, symbol, timeframe)
+        fractal_frames = load_layered_live_candles(symbol, timeframe, df)
+        status = build_operacional_live_status(df, symbol, timeframe, fractal_frames)
         meta = market.last_meta(symbol)
         status.update({
             "source": meta.get("source"),
@@ -2143,7 +2317,8 @@ def api_operacional_context(symbol, timeframe):
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
-        return jsonify(sanitize_json(build_operacional_context(df, symbol, timeframe)))
+        fractal_frames = load_layered_live_candles(symbol, timeframe, df)
+        return jsonify(sanitize_json(build_operacional_context(df, symbol, timeframe, fractal_frames)))
     except Exception as error:
         return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error)}), 200
 
@@ -2156,7 +2331,8 @@ def api_operacional_candle_flow(symbol, timeframe):
     try:
         limit = int(request.args.get("limit", 120))
         df = load_market_data(symbol, timeframe, limit)
-        return jsonify(sanitize_json(build_candle_flow(df, symbol, timeframe)))
+        fractal_frames = load_layered_live_candles(symbol, timeframe, df)
+        return jsonify(sanitize_json(build_candle_flow(df, symbol, timeframe, fractal_frames)))
     except Exception as error:
         return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error), "candle_flow": []}), 200
 
@@ -2409,4 +2585,4 @@ def get_timeframes():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=not getattr(sys, "frozen", False))
