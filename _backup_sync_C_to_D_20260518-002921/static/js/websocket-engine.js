@@ -9,6 +9,8 @@
             this.generation = 0;
             this.reconnectTimer = null;
             this.heartbeatTimer = null;
+            this.activeCandle = null;
+            this.activeVolume = null;
             this.reconnectDelay = options.reconnectDelay || 2500;
             this.maxReconnectDelay = options.maxReconnectDelay || 20000;
         }
@@ -59,11 +61,13 @@
                 const stream = payload.stream || '';
                 const data = payload.data || payload;
                 if (stream.includes('@aggTrade') || data.e === 'aggTrade') {
+                    const realtimeKline = includeTrades ? this.klineFromTrade(data, timeframe) : null;
+                    if (realtimeKline) onKline?.(realtimeKline);
                     onTrade?.(data);
                     return;
                 }
                 const kline = data.k;
-                if (kline) onKline?.(kline);
+                if (kline) onKline?.(this.rememberKline(this.normalizeKline(kline, true)));
             };
         }
 
@@ -107,7 +111,7 @@
                 if (payload.op === 'subscribe' || payload.success) return;
                 const item = Array.isArray(payload.data) ? payload.data[0] : payload.data;
                 if (!item) return;
-                onKline?.({
+                onKline?.(this.rememberKline(this.normalizeKline({
                     t: Number(item.start),
                     o: item.open,
                     h: item.high,
@@ -115,8 +119,109 @@
                     c: item.close,
                     v: item.volume,
                     x: Boolean(item.confirm),
-                });
+                }, true)));
             };
+        }
+
+        normalizeKline(kline, official = false) {
+            const time = this.normalizeTime(kline?.t ?? kline?.time);
+            const candle = {
+                time,
+                open: Number(kline?.o ?? kline?.open),
+                high: Number(kline?.h ?? kline?.high),
+                low: Number(kline?.l ?? kline?.low),
+                close: Number(kline?.c ?? kline?.close),
+                volume: Number(kline?.v ?? kline?.volume ?? 0) || 0,
+                official,
+                closed: Boolean(kline?.x),
+            };
+            const volume = {
+                time,
+                value: candle.volume,
+                color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
+            };
+            return {
+                ...kline,
+                t: time * 1000,
+                o: candle.open,
+                h: candle.high,
+                l: candle.low,
+                c: candle.close,
+                v: volume.value,
+                x: Boolean(kline?.x),
+                candle,
+                volume,
+                isClosed: Boolean(kline?.x),
+            };
+        }
+
+        rememberKline(kline) {
+            this.activeCandle = kline?.candle || null;
+            this.activeVolume = kline?.volume || null;
+            return kline;
+        }
+
+        klineFromTrade(trade, timeframe) {
+            const price = Number(trade?.p ?? trade?.price);
+            if (!Number.isFinite(price) || price <= 0) return null;
+            const quantity = Number(trade?.q ?? trade?.quantity ?? 0) || 0;
+            const tradeTime = this.normalizeTime(trade?.T ?? trade?.E ?? trade?.time);
+            const time = this.bucketTime(tradeTime, timeframe);
+            const previous = this.activeCandle;
+            const sameCandle = previous && Number(previous.time) === time;
+            if (previous && !sameCandle && !previous.closed) return null;
+            const baseOpen = sameCandle ? Number(previous.open) : Number(previous?.close || price);
+            const previousVolume = sameCandle ? Number(previous.volume || this.activeVolume?.value || 0) : 0;
+            const candle = {
+                time,
+                open: baseOpen,
+                high: sameCandle ? Math.max(Number(previous.high), price) : Math.max(baseOpen, price),
+                low: sameCandle ? Math.min(Number(previous.low), price) : Math.min(baseOpen, price),
+                close: price,
+                volume: previousVolume + quantity,
+                official: false,
+                closed: false,
+            };
+            const volume = {
+                time,
+                value: candle.volume,
+                color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
+            };
+            const kline = {
+                t: time * 1000,
+                o: candle.open,
+                h: candle.high,
+                l: candle.low,
+                c: candle.close,
+                v: volume.value,
+                x: false,
+                candle,
+                volume,
+                isClosed: false,
+                fromTrade: true,
+            };
+            this.activeCandle = candle;
+            this.activeVolume = volume;
+            return kline;
+        }
+
+        normalizeTime(value) {
+            const time = Number(value);
+            if (!Number.isFinite(time) || time <= 0) return Math.floor(Date.now() / 1000);
+            return time > 9999999999 ? Math.floor(time / 1000) : Math.floor(time);
+        }
+
+        bucketTime(timestamp, timeframe) {
+            const seconds = {
+                '1m': 60,
+                '5m': 300,
+                '15m': 900,
+                '1h': 3600,
+                '4h': 14400,
+                '1d': 86400,
+                '1w': 604800,
+            }[timeframe] || 60;
+            return Math.floor(Number(timestamp) / seconds) * seconds;
         }
 
         bybitInterval(timeframe) {
@@ -135,6 +240,8 @@
             clearTimeout(this.reconnectTimer);
             clearInterval(this.heartbeatTimer);
             this.generation += 1;
+            this.activeCandle = null;
+            this.activeVolume = null;
             if (this.socket) {
                 this.socket.onclose = null;
                 this.socket.close();

@@ -128,22 +128,14 @@ class RealtimeSignalsPage {
             grid.innerHTML = `<div class="live-empty-signal">${compact ? 'Nenhum sinal finalizado.' : 'Aguardando score acima de 80...'}</div>`;
             return;
         }
-        if (compact) {
-            grid.classList.add('signals-history-table');
-            grid.innerHTML = this.historyTable(signals);
-            return;
-        }
-        grid.classList.remove('signals-history-table');
         grid.innerHTML = signals.map((signal) => this.card(signal, compact)).join('');
     }
 
     card(signal, compact) {
         const strong = Number(signal.signalStrength || 0) >= 90 ? ' high-score' : '';
         const side = signal.direction === 'BUY' ? 'buy' : 'sell';
-        const reasons = (signal.reasons || []).slice(0, 3).join(' ') || '--';
-        const spark = this.sparkVars(signal);
-        return this.normalizeText(`
-            <article class="signal-realtime-card ${side}${strong}" style="${spark}">
+        return `
+            <article class="signal-realtime-card ${side}${strong}">
                 <div class="signal-realtime-head">
                     <div>
                         <h4>${signal.asset || '--'} · ${signal.timeframe || '--'}</h4>
@@ -153,7 +145,7 @@ class RealtimeSignalsPage {
                 </div>
                 <div class="signal-direction-row">
                     <strong>${signal.direction === 'BUY' ? 'COMPRA' : 'VENDA'}</strong>
-                    <span>${this.escape(signal.status || '--')}</span>
+                    <span>${signal.status || '--'}</span>
                 </div>
                 <div class="signal-level-grid">
                     <div><span>Entrada</span><strong>${this.price(signal.entryPrice)}</strong></div>
@@ -174,43 +166,9 @@ class RealtimeSignalsPage {
                     <span class="${signal.layers?.confirmation ? 'on' : ''}">Confirmação</span>
                     <span class="on">Score ${signal.layers?.aiScore ?? signal.signalStrength}</span>
                 </div>
-                ${compact ? '' : `<p>${this.escape(reasons)}</p>`}
+                ${compact ? '' : `<p>${(signal.reasons || []).slice(0, 3).join(' ') || '--'}</p>`}
             </article>
-        `);
-    }
-
-    historyTable(signals) {
-        return this.normalizeText(`
-            <div class="signals-history-row header">
-                <span>Data</span>
-                <span>Ativo</span>
-                <span>Lado</span>
-                <span>Score</span>
-                <span>Status</span>
-            </div>
-            ${signals.map((signal) => {
-                const side = signal.direction === 'BUY' ? 'buy' : 'sell';
-                return `
-                    <div class="signals-history-row">
-                        <span>${this.formatDate(signal.createdAt)}</span>
-                        <span><strong>${this.escape(signal.asset || '--')}</strong><small>${this.escape(signal.timeframe || '--')}</small></span>
-                        <strong class="history-side ${side}">${signal.direction === 'BUY' ? 'Buy' : 'Sell'}</strong>
-                        <strong>${Number(signal.signalStrength || 0).toFixed(0)}%</strong>
-                        <span class="history-status">${this.escape(signal.status || '--')}</span>
-                    </div>
-                `;
-            }).join('')}
-        `);
-    }
-
-    sparkVars(signal) {
-        const seed = String(signal.asset || '').split('').reduce((total, char) => total + char.charCodeAt(0), 0);
-        const strength = Number(signal.signalStrength || 0);
-        return [
-            `--spark-a:${14 + (seed % 16)}%`,
-            `--spark-b:${38 + (Math.round(strength) % 22)}%`,
-            `--spark-c:${70 + (seed % 18)}%`,
-        ].join(';');
+        `;
     }
 
     price(value) {
@@ -231,17 +189,7 @@ class RealtimeSignalsPage {
 
     setText(id, value) {
         const element = document.getElementById(id);
-        if (element) element.textContent = this.normalizeText(value ?? '--');
-    }
-
-    normalizeText(value) {
-        return window.FinanceText?.normalize ? window.FinanceText.normalize(value) : value;
-    }
-
-    escape(value) {
-        return window.FinanceText?.escape
-            ? window.FinanceText.escape(value)
-            : String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+        if (element) element.textContent = value ?? '--';
     }
 }
 

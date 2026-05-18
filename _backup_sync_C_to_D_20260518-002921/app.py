@@ -1,8 +1,6 @@
 import os
 import math
-import os
 import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
@@ -26,7 +24,6 @@ from ia.context_engine import ContextEngine
 from ia.data_generator import generate_realistic_data
 from ia.execution_engine import ExecutionEngine
 from ia.final_score import calculate_final_score
-from ia.flow_institucional_ia import FlowInstitucionalIA
 from ia.institutional import OperationalValidator, PatternLearner, ProfessionalBacktest
 from ia.flow_engine import build_flow_context
 from ia.institutional_confluence_engine import build_institutional_confluence
@@ -1033,12 +1030,6 @@ def institutional():
     return render_template("institutional.html")
 
 
-@app.route("/analise-fluxo")
-@login_required
-def analise_fluxo():
-    return render_template("analise_fluxo.html")
-
-
 @app.route("/operacional")
 @login_required
 def operacional():
@@ -1170,120 +1161,49 @@ def get_candles(symbol, timeframe):
             return jsonify({"success": False, "error": str(fallback_error), "candles": [], "volumes": [], "overlays": {}}), 200
 
 
-def build_institutional_analysis_payload(requested_symbol, timeframe, asset_type, limit=320):
-    df = load_market_data(requested_symbol, timeframe, limit)
-    candles_by_timeframe = load_layered_live_candles(requested_symbol, timeframe, df)
-    news = {
-        "available": False,
-        "impact": "UNKNOWN",
-        "blocking": False,
-        "source": "internal",
-        "items": [],
-        "message": "Calendario de noticias nao conectado nesta leitura.",
-    }
-    institutional_payload = build_institutional_unified_analysis(
-        candles=df,
-        asset=requested_symbol,
-        timeframe=timeframe,
-        asset_type=asset_type,
-        candles_by_timeframe=candles_by_timeframe,
-        news=news,
-        risk_status={"allowed": True, "rejections": []},
-    )
-    mode_payload = build_institutional_mode(institutional_payload)
-    narrative = build_institutional_narrative(institutional_payload, mode_payload)
-    return {
-        "success": True,
-        "symbol": requested_symbol,
-        "timeframe": timeframe,
-        "assetType": asset_type,
-        "institutional": institutional_payload,
-        "institutionalMode": mode_payload,
-        "aiNarrative": narrative,
-        "candles": df,
-        "candlesByTimeframe": candles_by_timeframe,
-        "news": news,
-    }
-
-
 @app.route("/api/institutional/analysis/<symbol>/<timeframe>")
 def api_institutional_analysis(symbol, timeframe):
     requested_symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
-    asset_type = request.args.get("assetType") or request.args.get("asset_type") or market.identify_market(requested_symbol)
+    asset_type = request.args.get("assetType") or market.identify_market(requested_symbol)
     try:
-        payload = build_institutional_analysis_payload(
-            requested_symbol,
-            timeframe,
-            asset_type,
-            int(request.args.get("limit", 320)),
-        )
-        payload.pop("candles", None)
-        payload.pop("candlesByTimeframe", None)
-        payload.pop("news", None)
-        return jsonify(sanitize_json(payload))
-    except Exception as error:
-        return jsonify(sanitize_json({
-            "success": False,
-            "symbol": requested_symbol,
-            "timeframe": timeframe,
-            "assetType": asset_type,
-            "error": str(error),
-        })), 200
-
-
-@app.route("/api/flow-analysis")
-def api_flow_analysis():
-    requested_symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
-    timeframe = normalize_timeframe(request.args.get("timeframe", "15m"))
-    asset_type = request.args.get("assetType") or request.args.get("asset_type") or market.identify_market(requested_symbol)
-    try:
-        payload = build_institutional_analysis_payload(
-            requested_symbol,
-            timeframe,
-            asset_type,
-            int(request.args.get("limit", 320)),
-        )
-        flow_ai = FlowInstitucionalIA(
+        limit = int(request.args.get("limit", 320))
+        df = load_market_data(requested_symbol, timeframe, limit)
+        candles_by_timeframe = load_layered_live_candles(requested_symbol, timeframe, df)
+        news = {
+            "available": False,
+            "impact": "UNKNOWN",
+            "blocking": False,
+            "source": "internal",
+            "items": [],
+            "message": "Calendario de noticias nao conectado nesta leitura.",
+        }
+        institutional_payload = build_institutional_unified_analysis(
+            candles=df,
             asset=requested_symbol,
             timeframe=timeframe,
             asset_type=asset_type,
-            candles_by_timeframe=payload.get("candlesByTimeframe"),
-            news=payload.get("news"),
+            candles_by_timeframe=candles_by_timeframe,
+            news=news,
             risk_status={"allowed": True, "rejections": []},
         )
-        flow_ai.analysis = payload["institutional"]
-        flow_ai._sync_state(payload["institutional"])
-        signal = flow_ai.generate_signal()
-        flow_payload = {
-            "direction": signal.get("direction"),
-            "directionCode": signal.get("direction_code"),
-            "score": signal.get("score"),
-            "confidence": signal.get("confidence_value"),
-            "confidenceLabel": signal.get("confidence"),
-            "flowStrength": signal.get("flow_strength"),
-            "trend": signal.get("trend"),
-            "entryAllowed": signal.get("entry_allowed"),
-            "status": signal.get("status"),
-            "reason": signal.get("reason"),
-        }
-        payload.pop("candles", None)
-        payload.pop("candlesByTimeframe", None)
-        payload.pop("news", None)
-        payload["analysis"] = payload["institutional"]
-        payload["signal"] = signal
-        payload["flow"] = flow_payload
-        return jsonify(sanitize_json(payload))
+        mode_payload = build_institutional_mode(institutional_payload)
+        narrative = build_institutional_narrative(institutional_payload, mode_payload)
+        return jsonify(sanitize_json({
+            "success": True,
+            "symbol": requested_symbol,
+            "timeframe": timeframe,
+            "assetType": asset_type,
+            "institutional": institutional_payload,
+            "institutionalMode": mode_payload,
+            "aiNarrative": narrative,
+        }))
     except Exception as error:
         return jsonify(sanitize_json({
             "success": False,
             "symbol": requested_symbol,
             "timeframe": timeframe,
             "assetType": asset_type,
-            "institutional": {},
-            "analysis": {},
-            "signal": {},
-            "flow": {},
             "error": str(error),
         })), 200
 
@@ -1910,7 +1830,7 @@ def api_live_status(symbol, timeframe):
         except Exception:
             live_technical_reading = status.get("technical", {})
         try:
-            live_smc = build_smc_context(df, "neutro")
+            live_smc = build_smc_context(df, (status.get("technical") or {}).get("signal") or status.get("probable_direction", "NEUTRAL"))
         except Exception:
             live_smc = status.get("smc_context") or default_smc()
         live_flow = build_flow_context(status.get("volume", {}), status.get("tape_reading", {}))

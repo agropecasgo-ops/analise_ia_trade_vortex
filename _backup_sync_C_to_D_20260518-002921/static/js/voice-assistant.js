@@ -48,7 +48,7 @@ class FinanceVoiceAssistant {
 
     bindControls(prefix = 'voice') {
         document.getElementById(`${prefix}Toggle`)?.addEventListener('click', () => this.toggleVoice());
-        document.getElementById(`${prefix}Test`)?.addEventListener('click', () => this.speak('Voz IA ativada. Mensagens educativas, não são recomendação financeira.', 'test'));
+        document.getElementById(`${prefix}Test`)?.addEventListener('click', () => this.speak('Voz IA ativada. Mensagens educativas, nao recomendacao financeira.', 'test'));
         document.getElementById(`${prefix}Stop`)?.addEventListener('click', () => this.stopSpeaking());
         document.getElementById(`${prefix}Volume`)?.addEventListener('input', (event) => this.setVoiceSettings({ volume: Number(event.target.value) }));
         document.getElementById(`${prefix}Rate`)?.addEventListener('input', (event) => this.setVoiceSettings({ rate: Number(event.target.value) }));
@@ -60,7 +60,6 @@ class FinanceVoiceAssistant {
     speak(message, priority = 'normal') {
         if (!this.enabled && priority !== 'test') return false;
         if (!('speechSynthesis' in window) || !message) return false;
-        message = this.normalizeText(message);
         const eventType = this.eventTypeFromMessage(message, priority);
         if (priority !== 'test' && !this.shouldSpeak(eventType, message)) return false;
 
@@ -109,26 +108,26 @@ class FinanceVoiceAssistant {
     formatOperationalMessage(signal = {}) {
         const status = String(signal.status || signal.state || '').toLowerCase();
         const direction = String(signal.direction || signal.probable_direction || '').toUpperCase();
-        if (status.includes('invalid')) return 'Cenário invalidado.';
+        if (status.includes('invalid')) return 'Cenario invalidado.';
         if (status.includes('stopped')) return 'Stop loss atingido.';
         if (status.includes('tp')) return 'Take profit atingido.';
         if (direction === 'BUY' && (status.includes('confirmed') || status.includes('active'))) return 'Compra confirmada.';
         if (direction === 'SELL' && (status.includes('confirmed') || status.includes('active'))) return 'Venda confirmada.';
-        return this.normalizeText(signal.message || signal.technical_reason || '');
+        return signal.message || signal.technical_reason || '';
     }
 
     speakLiveStatus(status = {}) {
         const state = status.state;
         const map = {
             ANALYZING: 'Analisando mercado.',
-            WAITING_CONFIRMATION: 'Aguardando confirmação.',
-            WEAK_VOLUME: 'Volume fraco. Não entrar ainda.',
-            AGGRESSIVE_ENTRY: 'Entrada agressiva possível.',
-            CONSERVATIVE_ENTRY: 'Entrada conservadora possível.',
+            WAITING_CONFIRMATION: 'Aguardando confirmacao.',
+            WEAK_VOLUME: 'Volume fraco. Nao entrar ainda.',
+            AGGRESSIVE_ENTRY: 'Entrada agressiva possivel.',
+            CONSERVATIVE_ENTRY: 'Entrada conservadora possivel.',
             BUY_CONFIRMED: 'Compra confirmada.',
             SELL_CONFIRMED: 'Venda confirmada.',
-            INVALIDATED: 'Cenário invalidado.',
-            HIGH_RISK: 'Alto risco. Não entrar ainda.',
+            INVALIDATED: 'Cenario invalidado.',
+            HIGH_RISK: 'Alto risco. Nao entrar ainda.',
             WAIT_NEXT_CANDLE: 'Aguardar novo candle.',
         };
         const message = map[state];
@@ -172,14 +171,10 @@ class FinanceVoiceAssistant {
         const volume = document.getElementById(`${prefix}Volume`);
         const rate = document.getElementById(`${prefix}Rate`);
         if (status) status.textContent = this.enabled ? 'ATIVA' : 'DESLIGADA';
-        if (last) last.textContent = this.normalizeText(this.lastMessage || '--');
+        if (last) last.textContent = this.lastMessage || '--';
         if (toggle) toggle.textContent = this.enabled ? 'Desativar voz' : 'Ativar voz';
         if (volume) volume.value = this.volume;
         if (rate) rate.value = this.rate;
-    }
-
-    normalizeText(value) {
-        return window.FinanceText?.normalize ? window.FinanceText.normalize(value) : value;
     }
 }
 

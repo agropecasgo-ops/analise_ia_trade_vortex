@@ -110,10 +110,7 @@ class LiveTradingDashboard {
     }
 
     setupChart() {
-        this.chartEngine = new window.LiveChartEngine('liveChart', {
-            minHeight: 520,
-            backgroundColor: 'rgba(3, 7, 18, 0.62)',
-        }).init();
+        this.chartEngine = new window.LiveChartEngine('liveChart', { minHeight: 520 }).init();
         this.chart = this.chartEngine?.chart;
         this.candleSeries = this.chartEngine?.candleSeries;
         this.volumeSeries = this.chartEngine?.volumeSeries;
@@ -166,7 +163,7 @@ class LiveTradingDashboard {
         } catch (error) {
             if (error.name === 'AbortError') return;
             this.setConnection('REST falhou');
-            this.pushMessage('Não foi possível carregar histórico. Tentando manter a tela ativa.');
+            this.pushMessage('Nao foi possivel carregar historico. Tentando manter a tela ativa.');
         }
     }
 
@@ -179,10 +176,11 @@ class LiveTradingDashboard {
             this.websocketEngine?.close();
             this.socket = null;
             this.setConnection(this.streaming ? 'MT5 tempo real' : 'REST / historico');
-            this.candlePollTimer = setInterval(() => this.loadInitialCandles(false), this.streaming ? 10000 : 60000);
             if (this.streaming) {
                 this.refreshMarketTick();
                 this.tickPollTimer = setInterval(() => this.refreshMarketTick(), 1500);
+            } else {
+                this.candlePollTimer = setInterval(() => this.loadInitialCandles(false), 60000);
             }
             return;
         }
@@ -196,8 +194,9 @@ class LiveTradingDashboard {
         this.websocketEngine?.connectKline({
             symbol: this.symbol,
             timeframe: this.timeframe,
+            includeTrades: true,
             onState: (state) => this.setConnection(state),
-            onKline: (kline) => this.handleKline({ k: kline }),
+            onKline: (kline) => this.handleKline(kline),
         });
         this.socket = this.websocketEngine?.socket || null;
     }
@@ -240,7 +239,7 @@ class LiveTradingDashboard {
             value: volumeValue,
             color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
         };
-        this.chartEngine?.update(candle, volume);
+        if (!this.chartEngine?.update(candle, volume)) return;
         this.lastCandles = this.chartEngine?.lastCandles || this.lastCandles;
     }
 
@@ -258,22 +257,11 @@ class LiveTradingDashboard {
         return Math.max(0, current - previous);
     }
 
-    handleKline(payload) {
-        const kline = payload.k;
+    handleKline(kline) {
         if (!kline) return;
-        const candle = {
-            time: Math.floor(kline.t / 1000),
-            open: Number(kline.o),
-            high: Number(kline.h),
-            low: Number(kline.l),
-            close: Number(kline.c),
-        };
-        const volume = {
-            time: candle.time,
-            value: Number(kline.v),
-            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
-        };
-        this.chartEngine?.update(candle, volume);
+        const candle = kline.candle;
+        const volume = kline.volume;
+        if (!this.chartEngine?.update(candle, volume)) return;
         this.lastCandles = this.chartEngine?.lastCandles || this.lastCandles;
         this.setText('livePrice', this.formatPrice(candle.close));
         this.lastCandleTime = candle.time;
@@ -281,10 +269,10 @@ class LiveTradingDashboard {
         const priceMove = this.lastAnalysisPrice ? Math.abs(candle.close - this.lastAnalysisPrice) / this.lastAnalysisPrice : 0;
         const volumeMove = this.lastAnalysisVolume ? Number(kline.v) / Math.max(this.lastAnalysisVolume, 0.00000001) : 1;
         const srBroken = this.isSupportResistanceBroken(candle.close);
-        if (kline.x || priceMove >= 0.004 || volumeMove >= 1.8 || srBroken) {
+        if (kline.isClosed || priceMove >= 0.004 || volumeMove >= 1.8 || srBroken) {
             this.lastAnalysisPrice = candle.close;
             this.lastAnalysisVolume = Number(kline.v);
-            this.fetchLiveStatus(kline.x ? 'new_candle' : srBroken ? 'support_resistance_break' : 'strong_change');
+            this.fetchLiveStatus(kline.isClosed ? 'new_candle' : srBroken ? 'support_resistance_break' : 'strong_change');
         }
     }
 
@@ -327,9 +315,6 @@ class LiveTradingDashboard {
         this.setText('liveDeskSummary', data.context?.narrative || data.message || '--');
         this.setText('liveDeskState', data.status || state);
         this.setText('liveDeskUpdated', this.formatClock(data.updated_at));
-        this.setText('monitorRegime', data.probable_direction || data.status || 'Fluxo em leitura');
-        this.setText('monitorPressure', data.context?.pressure || data.operational_panel?.pressure || (Number.isFinite(Number(data.volume_strength)) ? `${data.volume_strength}% volume` : 'Aguardando IA'));
-        this.setText('monitorAlerts', (data.alerts || []).length ? (data.alerts || []).join(' · ') : 'Sem alerta crítico');
         this.renderContext(data.operational_panel || {}, data.context || {});
         this.renderCandleReading(data.candle_reading || {}, data.operational_panel || {});
         this.setText('liveMarketStatus', this.getMarketStatusText(data.market_data_status || data.market_status));
@@ -429,7 +414,7 @@ class LiveTradingDashboard {
         const grid = document.getElementById('liveSignalsGrid');
         if (!grid) return;
         if (!signals.length) {
-            grid.innerHTML = '<div class="live-empty-signal">Aguardando confluência forte da IA...</div>';
+            grid.innerHTML = '<div class="live-empty-signal">Aguardando confluencia forte da IA...</div>';
             return;
         }
         grid.innerHTML = signals.map((signal) => this.signalCard(signal)).join('');
@@ -441,8 +426,8 @@ class LiveTradingDashboard {
             <article class="live-signal-card ${sideClass}">
                 <div class="live-signal-head">
                     <div>
-                        <h4>${this.escape(signal.symbol || signal.asset)} - ${this.escape(signal.timeframe)}</h4>
-                        <small>${this.escape(signal.market_label || signal.market || '--')}</small>
+                        <h4>${signal.symbol || signal.asset} - ${signal.timeframe}</h4>
+                        <small>${signal.market_label || signal.market || '--'}</small>
                     </div>
                     <span class="live-signal-direction">${signal.direction || 'WAIT'}</span>
                 </div>
@@ -457,9 +442,9 @@ class LiveTradingDashboard {
                     <div><span>Take 1</span><strong>${this.formatPrice(signal.take_profit_1)}</strong></div>
                     <div><span>Take 2</span><strong>${this.formatPrice(signal.take_profit_2)}</strong></div>
                     <div><span>Take 3</span><strong>${this.formatPrice(signal.take_profit_3)}</strong></div>
-                    <div><span>Parcial</span><strong>${this.escape(signal.partial_result || '--')}</strong></div>
+                    <div><span>Parcial</span><strong>${signal.partial_result || '--'}</strong></div>
                 </div>
-                <p class="live-signal-reason">${this.escape(signal.explanation || signal.technical_reason || '--')}</p>
+                <p class="live-signal-reason">${signal.explanation || signal.technical_reason || '--'}</p>
                 <div class="live-signal-status">
                     <span>${this.signalStatusText(signal.status)}</span>
                     <span>${this.remainingSignalTime(signal.expires_at)}</span>
@@ -501,7 +486,7 @@ class LiveTradingDashboard {
             feed.innerHTML = '';
         }
         items.forEach((item) => {
-            const message = this.normalizeText(typeof item === 'string' ? item : item.text);
+            const message = typeof item === 'string' ? item : item.text;
             const signature = `${typeof item === 'string' ? 'IA' : item.kind}:${message}`;
             if (typeof item !== 'string' && this.narrativeSignatures.has(signature)) return;
             this.narrativeSignatures.add(signature);
@@ -511,7 +496,7 @@ class LiveTradingDashboard {
                 <i class="fas fa-circle"></i>
                 <span>
                     <small>${typeof item === 'string' ? this.clockNow() : this.formatClock(item.timestamp)} - ${typeof item === 'string' ? 'IA' : item.kind}</small>
-                    ${this.escape(message)}
+                    ${message}
                 </span>
             `;
             feed.appendChild(row);
@@ -528,13 +513,13 @@ class LiveTradingDashboard {
         items.forEach((message) => {
             const row = document.createElement('div');
             row.className = 'live-invalidation-row filter';
-            row.innerHTML = `<i class="fas fa-hourglass-half"></i><span>${this.escape(message)}</span>`;
+            row.innerHTML = `<i class="fas fa-hourglass-half"></i><span>${message}</span>`;
             list.appendChild(row);
         });
         realInvalidations.forEach((message) => {
             const row = document.createElement('div');
             row.className = 'live-invalidation-row critical';
-            row.innerHTML = `<i class="fas fa-times-circle"></i><span>Invalidação real: ${this.escape(message)}</span>`;
+            row.innerHTML = `<i class="fas fa-times-circle"></i><span>Invalidacao real: ${message}</span>`;
             list.appendChild(row);
         });
     }
@@ -543,7 +528,7 @@ class LiveTradingDashboard {
         fetch('/api/execution/status')
             .then((response) => response.json())
             .then((data) => this.renderExecutionStatus(data))
-            .catch(() => this.setText('execDecision', 'Execução indisponível no momento.'));
+            .catch(() => this.setText('execDecision', 'Execucao indisponivel no momento.'));
     }
 
     updateExecutionMode(enable) {
@@ -555,14 +540,14 @@ class LiveTradingDashboard {
         })
             .then((response) => response.json())
             .then((data) => this.renderExecutionStatus(data))
-            .catch(() => this.setText('execDecision', 'Não foi possível atualizar execução.'));
+            .catch(() => this.setText('execDecision', 'Nao foi possivel atualizar execucao.'));
     }
 
     killExecution() {
         fetch('/api/execution/kill-switch', { method: 'POST' })
             .then((response) => response.json())
             .then((data) => this.renderExecutionStatus(data))
-            .catch(() => this.setText('execDecision', 'Kill switch indisponível.'));
+            .catch(() => this.setText('execDecision', 'Kill switch indisponivel.'));
     }
 
     evaluateExecution(status) {
@@ -695,7 +680,7 @@ class LiveTradingDashboard {
                 context.close();
             }, 180);
         } catch (error) {
-            console.warn('Áudio indisponível', error);
+            console.warn('Audio indisponivel', error);
         }
     }
 
@@ -719,6 +704,36 @@ class LiveTradingDashboard {
 
     setConnection(text) {
         this.setText('liveConnection', text);
+        this.updateRealtimeBadge(text);
+    }
+
+    updateRealtimeBadge(rawState) {
+        const status = this.realtimeBadgeStatus(rawState);
+        let badge = document.getElementById('realtimeStatusBadge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'realtimeStatusBadge';
+            badge.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;padding:6px 10px;border-radius:999px;font:600 11px Inter,Arial,sans-serif;letter-spacing:0;background:rgba(3,7,18,.86);border:1px solid rgba(148,163,184,.24);box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:none;';
+            document.body.appendChild(badge);
+        }
+        badge.textContent = status.label;
+        badge.style.color = status.color;
+        badge.style.borderColor = status.border;
+    }
+
+    realtimeBadgeStatus(rawState) {
+        const state = String(rawState || '').toLowerCase();
+        const wsActive = this.websocketEngine?.socket?.readyState === WebSocket.OPEN;
+        if (state.includes('rest') || state.includes('tick') || state.includes('mt5') || state.includes('polling') || state.includes('historico') || state.includes('indisponivel')) {
+            return { label: 'Fallback REST/Tick', color: '#facc15', border: 'rgba(250,204,21,.36)' };
+        }
+        if (state.includes('reconect') || state.includes('falh') || state.includes('aguard') || state.includes('atualizando') || state.includes('carregando')) {
+            return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
+        }
+        if (wsActive || state.includes('websocket') || state.includes('bybit')) {
+            return { label: 'Realtime ativo', color: '#22c55e', border: 'rgba(34,197,94,.38)' };
+        }
+        return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
     }
 
     pushMessage(message) {
@@ -726,7 +741,7 @@ class LiveTradingDashboard {
         if (!feed) return;
         const row = document.createElement('div');
         row.className = 'live-message-row';
-        row.innerHTML = `<i class="fas fa-circle"></i><span>${this.escape(message)}</span>`;
+        row.innerHTML = `<i class="fas fa-circle"></i><span>${message}</span>`;
         feed.prepend(row);
         while (feed.children.length > 8) feed.lastElementChild.remove();
     }
@@ -734,13 +749,13 @@ class LiveTradingDashboard {
     showToast(message, type = 'info') {
         const toast = document.createElement('div');
         toast.className = `toast-notification ${type}`;
-        toast.textContent = this.normalizeText(message);
+        toast.textContent = message;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3200);
     }
 
     setText(id, value) {
-        const next = this.normalizeText(value ?? '--');
+        const next = value ?? '--';
         if (this.textCache.get(id) === next) return;
         this.textCache.set(id, next);
         let element = this.elementCache.get(id);
@@ -748,17 +763,7 @@ class LiveTradingDashboard {
             element = document.getElementById(id);
             if (element) this.elementCache.set(id, element);
         }
-        if (element) element.textContent = next;
-    }
-
-    normalizeText(value) {
-        return window.FinanceText?.normalize ? window.FinanceText.normalize(value) : value;
-    }
-
-    escape(value) {
-        return window.FinanceText?.escape
-            ? window.FinanceText.escape(value)
-            : String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+        if (element) element.textContent = value ?? '--';
     }
 
     normalizeSmartMarkers(markers) {

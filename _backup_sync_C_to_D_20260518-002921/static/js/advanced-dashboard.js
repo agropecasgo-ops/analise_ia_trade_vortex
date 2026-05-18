@@ -135,7 +135,19 @@ class AdvancedDashboard {
 
     startRealtime() {
         clearInterval(this.refreshTimer);
-        this.refreshTimer = setInterval(() => this.updateDashboard(false), this.refreshMs);
+        this.refreshTimer = setInterval(() => {
+            if (this.hasPrimaryWebSocket()) return;
+            if (this.latestStreaming === false || String(this.currentAsset).endsWith('USDT')) {
+                this.updateDashboard(false);
+            }
+        }, this.refreshMs);
+    }
+
+    hasPrimaryWebSocket() {
+        return String(this.currentAsset).endsWith('USDT')
+            && this.latestStreaming !== false
+            && this.websocketEngine?.socket
+            && this.websocketEngine.socket.readyState <= WebSocket.OPEN;
     }
 
     async updateDashboard(fit = false) {
@@ -402,22 +414,12 @@ class AdvancedDashboard {
             onState: (state) => this.setConnectionState(state),
             onTrade: (trade) => this.handleTradeStream(trade),
             onKline: (kline) => {
-                const candle = {
-                    time: Math.floor(kline.t / 1000),
-                    open: Number(kline.o),
-                    high: Number(kline.h),
-                    low: Number(kline.l),
-                    close: Number(kline.c),
-                };
-                const volume = {
-                    time: candle.time,
-                    value: Number(kline.v),
-                    color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
-                };
-                this.chartEngine?.update(candle, volume);
+                const candle = kline.candle;
+                const volume = kline.volume;
+                if (!this.chartEngine?.update(candle, volume)) return;
                 this.setText('currentPrice', this.formatPrice(candle.close));
                 this.setText('lastUpdate', new Date().toLocaleTimeString('pt-BR'));
-                if (kline.x) this.scheduleRealtimeAnalysis();
+                if (kline.isClosed) this.scheduleRealtimeAnalysis();
             },
         });
         this.klineSocket = this.websocketEngine?.socket || null;
@@ -466,7 +468,7 @@ class AdvancedDashboard {
             value: Number(candle.volume) || 0,
             color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
         };
-        this.chartEngine?.update(candle, volume);
+        if (!this.chartEngine?.update(candle, volume)) return;
         this.setText('currentPrice', this.formatPrice(price));
         this.setText('dataSource', String(tick.source || '--').toUpperCase());
         this.setText('marketState', this.getMarketStatusText(tick.market_status || 'open'));
@@ -635,35 +637,12 @@ class AdvancedDashboard {
         }
 
         const levels = analysis.levels || {};
-        const rrValue = institutionalRisk.risk_reward ?? operationalSignal.risk_reward ?? levels.risco_retorno;
-        const priceText = this.formatPrice(analysis.current_price);
-        const changeText = `${Number(ticker.priceChangePercent || analysis.price_change || 0).toFixed(2)}%`;
-        const signalSide = String(finalDecision.label || '').toUpperCase().includes('VENDA') ? 'Sell' : 'Buy';
-        this.setText('dashTopAssetA', analysis.symbol || this.currentAsset);
-        this.setText('dashTopScoreA', `${Math.round(gaugeScore)}%`);
-        this.setText('dashTopChangeA', changeText);
-        this.setText('dashTopScoreB', `${Math.max(0, 100 - Math.round(finalDecision.confidence || 0))}%`);
-        this.setText('dashTopScoreC', `${Math.round(finalDecision.confidence || 0)}%`);
-        this.setText('dashHistoryDateA', new Date().toLocaleDateString('pt-BR'));
-        this.setText('dashHistoryDateB', new Date().toLocaleDateString('pt-BR'));
-        this.setText('dashHistoryDateC', new Date().toLocaleDateString('pt-BR'));
-        this.setText('dashHistoryPriceA', priceText);
-        this.setText('dashHistoryPriceB', `${Math.round(gaugeScore)}/100`);
-        this.setText('dashHistoryPriceC', Number.isFinite(Number(rrValue)) ? `1:${Number(rrValue).toFixed(2)}` : '--');
-        this.setText('dashHistoryAssetA', analysis.symbol || this.currentAsset);
-        this.setText('dashHistorySideA', signalSide);
-        this.setText('dashHistorySideB', signalSide === 'Buy' ? 'Sell' : 'Buy');
-        this.setText('dashHistoryStatusA', finalDecision.label || '--');
-        this.setText('dashHistoryStatusB', confluenceAI.classification || operationalSignal.status || '--');
-        this.setText('dashHistoryStatusC', Number.isFinite(Number(rrValue)) ? 'Plano ativo' : 'Aguardando');
-        this.setText('dashTotalAssetValue', priceText);
-        this.setText('dashTotalTimeframe', analysis.timeframe || this.currentTimeframe);
         this.setText('levelEntrada', this.formatPrice(institutionalRisk.entry ?? operationalSignal.entry_aggressive ?? levels.entrada));
         this.setText('levelEntradaConservadora', this.formatPrice(operationalSignal.entry_conservative));
         this.setText('levelStop', this.formatPrice(institutionalRisk.stop_loss ?? institutionalRisk.stop ?? operationalSignal.stop_loss ?? levels.stop_loss));
         this.setText('levelTarget1', this.formatPrice(institutionalRisk.take_partial ?? institutionalRisk.take_profit_partial ?? institutionalRisk.take_profit_1 ?? operationalSignal.take_profit_1 ?? levels.alvo_1));
         this.setText('levelTarget2', this.formatPrice(institutionalRisk.take_profit ?? institutionalRisk.take_profit_2 ?? operationalSignal.take_profit_2 ?? levels.alvo_2));
-        this.setText('riskRatio', Number.isFinite(Number(rrValue)) ? `1:${Number(rrValue).toFixed(2)}` : '--');
+        this.setText('riskRatio', Number.isFinite(Number(institutionalRisk.risk_reward ?? operationalSignal.risk_reward ?? levels.risco_retorno)) ? `1:${Number(institutionalRisk.risk_reward ?? operationalSignal.risk_reward ?? levels.risco_retorno).toFixed(2)}` : '--');
         this.setText('cancelScenario', institutionalRisk.invalidation ? `Invalida em ${this.formatPrice(institutionalRisk.invalidation)}` : operationalSignal.cancellation_scenario || '--');
 
         this.setText('rsiValue', this.formatNumber(indicators.rsi, 2));
@@ -990,11 +969,11 @@ class AdvancedDashboard {
         const list = document.getElementById('reasoningList');
         if (!list) return;
         list.innerHTML = '';
-        const items = reasoning.length ? reasoning : ['Sem motivo técnico dominante.'];
+        const items = reasoning.length ? reasoning : ['Sem motivo tecnico dominante.'];
         items.forEach((text) => {
             const item = document.createElement('div');
             item.className = 'reasoning-item';
-            item.innerHTML = `<i class="fas fa-check-circle"></i><span>${this.escape(text)}</span>`;
+            item.innerHTML = `<i class="fas fa-check-circle"></i><span>${text}</span>`;
             list.appendChild(item);
         });
     }
@@ -1003,11 +982,11 @@ class AdvancedDashboard {
         const list = document.getElementById('invalidationList');
         if (!list) return;
         list.innerHTML = '';
-        const items = invalidations.length ? invalidations : ['Sem invalidação crítica.'];
+        const items = invalidations.length ? invalidations : ['Sem invalidacao critica.'];
         items.forEach((text) => {
             const item = document.createElement('div');
             item.className = 'reasoning-item';
-            item.innerHTML = `<i class="fas fa-times-circle"></i><span>${this.escape(text)}</span>`;
+            item.innerHTML = `<i class="fas fa-times-circle"></i><span>${text}</span>`;
             list.appendChild(item);
         });
     }
@@ -1242,21 +1221,41 @@ class AdvancedDashboard {
     setConnectionState(text) {
         this.setText('connectionState', text);
         this.setText('lastUpdate', new Date().toLocaleTimeString('pt-BR'));
+        this.updateRealtimeBadge(text);
+    }
+
+    updateRealtimeBadge(rawState) {
+        const status = this.realtimeBadgeStatus(rawState);
+        let badge = document.getElementById('realtimeStatusBadge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'realtimeStatusBadge';
+            badge.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;padding:6px 10px;border-radius:999px;font:600 11px Inter,Arial,sans-serif;letter-spacing:0;background:rgba(3,7,18,.86);border:1px solid rgba(148,163,184,.24);box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:none;';
+            document.body.appendChild(badge);
+        }
+        badge.textContent = status.label;
+        badge.style.color = status.color;
+        badge.style.borderColor = status.border;
+    }
+
+    realtimeBadgeStatus(rawState) {
+        const state = String(rawState || '').toLowerCase();
+        const wsActive = this.websocketEngine?.socket?.readyState === WebSocket.OPEN;
+        if (state.includes('rest') || state.includes('tick') || state.includes('polling') || state.includes('historico') || state.includes('indisponivel')) {
+            return { label: 'Fallback REST/Tick', color: '#facc15', border: 'rgba(250,204,21,.36)' };
+        }
+        if (state.includes('reconect') || state.includes('falh') || state.includes('atualizando') || state.includes('carregando')) {
+            return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
+        }
+        if (wsActive || state.includes('websocket') || state.includes('bybit') || state.includes('tempo real')) {
+            return { label: 'Realtime ativo', color: '#22c55e', border: 'rgba(34,197,94,.38)' };
+        }
+        return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
     }
 
     setText(id, value) {
         const element = document.getElementById(id);
-        if (element) element.textContent = this.normalizeText(value ?? '--');
-    }
-
-    normalizeText(value) {
-        return window.FinanceText?.normalize ? window.FinanceText.normalize(value) : value;
-    }
-
-    escape(value) {
-        return window.FinanceText?.escape
-            ? window.FinanceText.escape(value)
-            : String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+        if (element) element.textContent = value;
     }
 
     getSignalText(signal, compact = false) {

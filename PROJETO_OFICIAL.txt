@@ -1,0 +1,7 @@
+Projeto oficial do FinanceAI
+
+Use esta pasta como unica base de trabalho:
+D:\Documentos\Analise Inteligente\PROGETO IA
+
+As atualizacoes aplicadas na copia do C: foram sincronizadas para esta pasta em 2026-05-18.
+Backup dos arquivos antigos do D: _backup_sync_C_to_D_20260518-002921

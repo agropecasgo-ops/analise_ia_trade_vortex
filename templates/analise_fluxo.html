@@ -1,0 +1,790 @@
+{% extends "base.html" %}
+
+{% block title %}Fluxo Institucional IA - FinanceAI{% endblock %}
+
+{% block extra_css %}
+<style>
+    .flow-ai-shell {
+        --flow-bg: #05090b;
+        --flow-panel: rgba(10, 18, 22, 0.86);
+        --flow-panel-2: rgba(17, 31, 36, 0.68);
+        --flow-line: rgba(191, 244, 241, 0.13);
+        --flow-cyan: #78d9d1;
+        --flow-green: #34d399;
+        --flow-red: #f87171;
+        --flow-yellow: #f6d58b;
+        --flow-muted: #8fa6ad;
+        --flow-text: #edf7f8;
+        max-width: 1760px;
+        margin: 0 auto;
+        color: var(--flow-text);
+    }
+
+    .flow-ai-shell .institutional-header {
+        position: relative;
+        overflow: hidden;
+        align-items: stretch;
+        padding: 24px;
+    }
+
+    .flow-ai-shell .institutional-header::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+            radial-gradient(520px 240px at 8% 0%, rgba(120, 217, 209, 0.16), transparent 70%),
+            radial-gradient(420px 220px at 92% 12%, rgba(52, 211, 153, 0.12), transparent 72%);
+    }
+
+    .flow-ai-shell .institutional-header > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .flow-ai-shell .institutional-state {
+        min-width: 220px;
+        justify-items: start;
+        align-content: center;
+        background: linear-gradient(145deg, rgba(5, 10, 12, 0.76), rgba(31, 111, 120, 0.12));
+    }
+
+    #flowStateDot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--flow-green);
+        box-shadow: 0 0 20px rgba(52, 211, 153, 0.68);
+    }
+
+    #flowStateDot.error {
+        background: var(--flow-red);
+        box-shadow: 0 0 20px rgba(248, 113, 113, 0.68);
+    }
+
+    .flow-ai-layout {
+        display: grid;
+        grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.25fr) minmax(320px, 0.82fr);
+        gap: 16px;
+        margin-top: 16px;
+    }
+
+    .flow-decision-card,
+    .flow-panel,
+    .flow-score-card,
+    .flow-strength-card,
+    .flow-trade-card {
+        min-width: 0;
+        border: 1px solid var(--flow-line);
+        border-top-color: rgba(120, 217, 209, 0.26);
+        border-radius: 14px;
+        background:
+            linear-gradient(145deg, rgba(16, 30, 35, 0.86), rgba(5, 9, 11, 0.84)),
+            radial-gradient(circle at 20% 0%, rgba(120, 217, 209, 0.08), transparent 38%);
+        box-shadow: 0 24px 72px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+        backdrop-filter: blur(16px);
+    }
+
+    .flow-decision-card {
+        position: relative;
+        overflow: hidden;
+        display: grid;
+        gap: 18px;
+        min-height: 430px;
+        padding: 22px;
+    }
+
+    .flow-decision-card::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        opacity: 0.42;
+        background: radial-gradient(420px 260px at 50% 12%, var(--flow-glow, rgba(120, 217, 209, 0.26)), transparent 72%);
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+    }
+
+    .flow-decision-card[data-tone="buy"] {
+        --flow-glow: rgba(52, 211, 153, 0.38);
+        border-color: rgba(52, 211, 153, 0.28);
+    }
+
+    .flow-decision-card[data-tone="sell"] {
+        --flow-glow: rgba(248, 113, 113, 0.36);
+        border-color: rgba(248, 113, 113, 0.28);
+    }
+
+    .flow-decision-card[data-tone="neutral"] {
+        --flow-glow: rgba(120, 217, 209, 0.26);
+    }
+
+    .flow-decision-card[data-tone="blocked"] {
+        --flow-glow: rgba(246, 213, 139, 0.28);
+        border-color: rgba(246, 213, 139, 0.24);
+    }
+
+    .flow-decision-card > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .flow-label {
+        color: var(--flow-cyan);
+        font-size: 0.72rem;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .flow-direction-lockup {
+        display: grid;
+        gap: 10px;
+    }
+
+    .flow-direction-icon {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        border: 1px solid rgba(191, 244, 241, 0.16);
+        border-radius: 14px;
+        color: var(--flow-accent, var(--flow-cyan));
+        background: rgba(5, 10, 12, 0.58);
+        box-shadow: 0 0 28px color-mix(in srgb, var(--flow-accent, var(--flow-cyan)) 18%, transparent);
+        font-size: 1.25rem;
+    }
+
+    .flow-decision-card[data-tone="buy"] .flow-direction-icon,
+    .flow-decision-card[data-tone="buy"] #flowDirection {
+        --flow-accent: var(--flow-green);
+        color: var(--flow-green);
+    }
+
+    .flow-decision-card[data-tone="sell"] .flow-direction-icon,
+    .flow-decision-card[data-tone="sell"] #flowDirection {
+        --flow-accent: var(--flow-red);
+        color: var(--flow-red);
+    }
+
+    .flow-decision-card[data-tone="blocked"] .flow-direction-icon,
+    .flow-decision-card[data-tone="blocked"] #flowDirection {
+        --flow-accent: var(--flow-yellow);
+        color: var(--flow-yellow);
+    }
+
+    #flowDirection {
+        display: block;
+        max-width: 100%;
+        color: var(--flow-cyan);
+        font-size: clamp(2rem, 4vw, 4.15rem);
+        font-weight: 950;
+        line-height: 0.95;
+        text-transform: uppercase;
+        overflow-wrap: anywhere;
+        text-shadow: 0 0 30px color-mix(in srgb, currentColor 22%, transparent);
+    }
+
+    #flowStatus {
+        margin: 0;
+        color: #b7c9ce;
+        line-height: 1.55;
+    }
+
+    .flow-bars {
+        display: grid;
+        gap: 13px;
+    }
+
+    .flow-bar-row {
+        display: grid;
+        gap: 7px;
+    }
+
+    .flow-bar-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        color: #dffafa;
+        font-size: 0.8rem;
+        font-weight: 850;
+        text-transform: uppercase;
+    }
+
+    .flow-bar-track {
+        height: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(191, 244, 241, 0.10);
+        border-radius: 999px;
+        background:
+            linear-gradient(90deg, rgba(255, 255, 255, 0.035), transparent),
+            rgba(5, 10, 12, 0.78);
+    }
+
+    .flow-bar-fill {
+        width: var(--value, 0%);
+        height: 100%;
+        border-radius: inherit;
+        transition: width 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+        box-shadow: 0 0 22px color-mix(in srgb, var(--bar-color, var(--flow-cyan)) 34%, transparent);
+        background:
+            linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent 38%),
+            linear-gradient(90deg, var(--bar-color), color-mix(in srgb, var(--bar-color) 44%, #020617));
+    }
+
+    .flow-bar-fill.buy {
+        --bar-color: var(--flow-green);
+    }
+
+    .flow-bar-fill.sell {
+        --bar-color: var(--flow-red);
+    }
+
+    .flow-bar-fill.neutral {
+        --bar-color: var(--flow-cyan);
+    }
+
+    .flow-panel,
+    .flow-score-card,
+    .flow-strength-card,
+    .flow-trade-card {
+        padding: 18px;
+    }
+
+    .flow-panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .flow-panel-title strong {
+        color: #f2fbfb;
+        font-size: 1rem;
+    }
+
+    .flow-narrative {
+        display: grid;
+        gap: 12px;
+    }
+
+    .flow-narrative-card {
+        min-height: 124px;
+        padding: 15px;
+        border: 1px solid rgba(120, 217, 209, 0.16);
+        border-radius: 12px;
+        color: #d5e5e8;
+        line-height: 1.6;
+        background: linear-gradient(135deg, rgba(31, 111, 120, 0.18), rgba(5, 10, 12, 0.74));
+    }
+
+    .flow-behavior-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .flow-behavior-item,
+    .flow-trade-item,
+    .flow-mini-kpi {
+        min-width: 0;
+        padding: 13px;
+        border: 1px solid rgba(191, 244, 241, 0.10);
+        border-radius: 12px;
+        background: linear-gradient(145deg, rgba(17, 31, 36, 0.72), rgba(4, 8, 10, 0.80));
+        box-shadow: 0 14px 38px rgba(0, 0, 0, 0.24);
+    }
+
+    .flow-behavior-item span,
+    .flow-trade-item span,
+    .flow-mini-kpi span {
+        display: block;
+        color: var(--flow-muted);
+        font-size: 0.7rem;
+        font-weight: 850;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .flow-behavior-item strong,
+    .flow-trade-item strong,
+    .flow-mini-kpi strong {
+        display: block;
+        margin-top: 7px;
+        color: #dffafa;
+        line-height: 1.32;
+        overflow-wrap: anywhere;
+    }
+
+    .flow-side-stack {
+        display: grid;
+        gap: 16px;
+    }
+
+    .flow-score-card {
+        display: grid;
+        grid-template-columns: 158px minmax(0, 1fr);
+        align-items: center;
+        gap: 18px;
+    }
+
+    .flow-score-ring {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 158px;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background:
+            radial-gradient(circle at center, #050a0c 0 58%, transparent 59%),
+            conic-gradient(var(--score-color, var(--flow-cyan)) calc(var(--score, 0) * 1%), rgba(191, 244, 241, 0.10) 0);
+        box-shadow: inset 0 0 34px rgba(0, 0, 0, 0.48), 0 0 34px color-mix(in srgb, var(--score-color, var(--flow-cyan)) 18%, transparent);
+        transition: background 0.55s ease;
+    }
+
+    .flow-score-ring::after {
+        content: "";
+        position: absolute;
+        inset: 16px;
+        border: 1px solid rgba(191, 244, 241, 0.11);
+        border-radius: inherit;
+        background: linear-gradient(145deg, rgba(8, 15, 18, 0.98), rgba(3, 6, 7, 0.98));
+    }
+
+    .flow-score-ring-inner {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+    }
+
+    .flow-score-ring-inner strong {
+        display: block;
+        color: #f2fbfb;
+        font-size: 2.8rem;
+        line-height: 1;
+    }
+
+    .flow-score-ring-inner span {
+        display: block;
+        margin-top: 4px;
+        color: var(--flow-muted);
+        font-size: 0.68rem;
+        font-weight: 850;
+        text-transform: uppercase;
+    }
+
+    .flow-score-meta {
+        display: grid;
+        gap: 10px;
+    }
+
+    .flow-strength-meter {
+        display: grid;
+        gap: 12px;
+    }
+
+    .flow-strength-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    #flowStrength {
+        color: #f2fbfb;
+        font-size: 2.4rem;
+        font-weight: 950;
+        line-height: 1;
+    }
+
+    .flow-strength-ladder {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 5px;
+    }
+
+    .flow-strength-ladder i {
+        display: block;
+        height: 34px;
+        border: 1px solid rgba(191, 244, 241, 0.09);
+        border-radius: 8px;
+        background: rgba(5, 10, 12, 0.72);
+        transition: background 0.35s ease, box-shadow 0.35s ease;
+    }
+
+    .flow-strength-ladder i.active {
+        background: linear-gradient(180deg, var(--strength-color, var(--flow-cyan)), rgba(5, 10, 12, 0.68));
+        box-shadow: 0 0 18px color-mix(in srgb, var(--strength-color, var(--flow-cyan)) 30%, transparent);
+    }
+
+    .flow-trade-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .flow-trade-item.entry {
+        border-color: rgba(52, 211, 153, 0.22);
+    }
+
+    .flow-trade-item.stop,
+    .flow-trade-item.invalidate {
+        border-color: rgba(248, 113, 113, 0.20);
+    }
+
+    .flow-trade-item.tp {
+        border-color: rgba(120, 217, 209, 0.20);
+    }
+
+    .flow-trade-item.rr {
+        border-color: rgba(246, 213, 139, 0.20);
+    }
+
+    @media (max-width: 1360px) {
+        .flow-ai-layout {
+            grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1fr);
+        }
+
+        .flow-side-stack {
+            grid-column: 1 / -1;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 980px) {
+        .flow-ai-layout,
+        .flow-side-stack,
+        .flow-score-card {
+            grid-template-columns: 1fr;
+        }
+
+        .flow-score-ring {
+            width: min(158px, 60vw);
+            justify-self: center;
+        }
+    }
+
+    @media (max-width: 680px) {
+        .flow-ai-shell .institutional-header,
+        .flow-ai-shell .institutional-controls {
+            display: grid;
+            grid-template-columns: 1fr;
+        }
+
+        .flow-behavior-grid,
+        .flow-trade-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="institutional-shell flow-ai-shell">
+    <section class="institutional-header">
+        <div>
+            <span class="institutional-kicker">Institutional Flow Engine</span>
+            <h1>Fluxo Institucional IA</h1>
+            <p>Leitura operacional de fluxo, liquidez, pressão e confluência institucional usando os engines reais da pasta IA.</p>
+        </div>
+        <div class="institutional-state">
+            <span id="flowStateDot"></span>
+            <strong id="flowDeskState">PRONTO</strong>
+            <small id="flowUpdated">--</small>
+        </div>
+    </section>
+
+    <section class="institutional-controls">
+        <div class="institutional-field">
+            <label for="flowAsset">Ativo</label>
+            <select id="flowAsset" class="institutional-input">
+                <option value="BTCUSDT">BTCUSDT - Bitcoin / USDT</option>
+            </select>
+        </div>
+        <div class="institutional-field">
+            <label for="flowTimeframe">Timeframe</label>
+            <select id="flowTimeframe" class="institutional-input">
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m" selected>15m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+                <option value="1d">1d</option>
+            </select>
+        </div>
+        <button id="flowGenerate" class="institutional-run" type="button">
+            <i class="fas fa-diagram-project"></i>
+            <span>Analisar Fluxo</span>
+        </button>
+    </section>
+
+    <div class="flow-ai-layout">
+        <aside class="flow-decision-card" id="flowDecisionCard" data-tone="neutral">
+            <div class="flow-direction-lockup">
+                <span class="flow-label">Direcao do fluxo</span>
+                <div class="flow-direction-icon" id="flowDirectionIcon">
+                    <i class="fas fa-wave-square"></i>
+                </div>
+                <strong id="flowDirection">FLUXO NEUTRO</strong>
+                <p id="flowStatus">Aguardando leitura institucional.</p>
+            </div>
+
+            <div class="flow-bars">
+                <div class="flow-bar-row">
+                    <div class="flow-bar-head"><span>Compra institucional</span><strong id="flowProbBuy">0%</strong></div>
+                    <div class="flow-bar-track"><div class="flow-bar-fill buy" id="flowBuyBar"></div></div>
+                </div>
+                <div class="flow-bar-row">
+                    <div class="flow-bar-head"><span>Venda institucional</span><strong id="flowProbSell">0%</strong></div>
+                    <div class="flow-bar-track"><div class="flow-bar-fill sell" id="flowSellBar"></div></div>
+                </div>
+                <div class="flow-bar-row">
+                    <div class="flow-bar-head"><span>Fluxo neutro</span><strong id="flowProbSideways">100%</strong></div>
+                    <div class="flow-bar-track"><div class="flow-bar-fill neutral" id="flowNeutralBar"></div></div>
+                </div>
+            </div>
+        </aside>
+
+        <section class="flow-panel">
+            <div class="flow-panel-title">
+                <div>
+                    <span class="flow-label">Resumo institucional</span>
+                    <strong id="flowChartTitle">BTCUSDT - 15m</strong>
+                </div>
+            </div>
+            <div class="flow-narrative">
+                <div class="flow-narrative-card" id="flowNarrative">A IA ainda não executou a leitura de fluxo.</div>
+                <div class="flow-behavior-grid" id="flowBehavior">
+                    <div class="flow-behavior-item"><span>Smart Money</span><strong>--</strong></div>
+                    <div class="flow-behavior-item"><span>Liquidez</span><strong>--</strong></div>
+                    <div class="flow-behavior-item"><span>Sweep</span><strong>--</strong></div>
+                    <div class="flow-behavior-item"><span>FVG</span><strong>--</strong></div>
+                    <div class="flow-behavior-item"><span>Pressao</span><strong>--</strong></div>
+                    <div class="flow-behavior-item"><span>Volume institucional</span><strong>--</strong></div>
+                </div>
+            </div>
+        </section>
+
+        <div class="flow-side-stack">
+            <section class="flow-score-card">
+                <div class="flow-score-ring" id="flowScoreRing">
+                    <div class="flow-score-ring-inner">
+                        <strong id="flowScore">--</strong>
+                        <span>Score IA</span>
+                    </div>
+                </div>
+                <div class="flow-score-meta">
+                    <div>
+                        <span class="flow-label">Score 0-100</span>
+                        <p id="flowScoreText">Aguardando leitura de confluência.</p>
+                    </div>
+                    <div class="flow-mini-kpi"><span>Confianca</span><strong id="flowConfidence">--</strong></div>
+                    <div class="flow-mini-kpi"><span>Entrada</span><strong id="flowEntryAllowed">--</strong></div>
+                </div>
+            </section>
+
+            <section class="flow-strength-card">
+                <div class="flow-strength-meter">
+                    <div class="flow-strength-head">
+                        <span class="flow-label">Forca do fluxo</span>
+                        <strong id="flowStrength">--</strong>
+                    </div>
+                    <div class="flow-strength-ladder" id="flowStrengthLadder">
+                        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                    </div>
+                    <div class="flow-mini-kpi"><span>Leitura da mesa</span><strong id="flowStrengthLabel">Aguardando fluxo</strong></div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <section class="flow-trade-card">
+        <div class="flow-panel-title">
+            <div>
+                <span class="flow-label">Plano de trade</span>
+                <strong>Execucao, risco e invalidacao</strong>
+            </div>
+        </div>
+        <div class="flow-trade-grid">
+            <div class="flow-trade-item entry"><span>Entrada</span><strong id="flowEntry">--</strong></div>
+            <div class="flow-trade-item stop"><span>Stop</span><strong id="flowStop">--</strong></div>
+            <div class="flow-trade-item tp"><span>TP1</span><strong id="flowTp1">--</strong></div>
+            <div class="flow-trade-item tp"><span>TP2</span><strong id="flowTp2">--</strong></div>
+            <div class="flow-trade-item rr"><span>RR</span><strong id="flowRR">--</strong></div>
+            <div class="flow-trade-item invalidate"><span>Invalidação</span><strong id="flowInvalidation">--</strong></div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+    const $ = (id) => document.getElementById(id);
+    const normalize = (value) => window.FinanceText?.normalize ? window.FinanceText.normalize(value) : value;
+    const clamp = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+    const text = (id, value) => {
+        const element = $(id);
+        if (element) element.textContent = normalize(value ?? "--");
+    };
+    const escapeHtml = (value) => String(normalize(value ?? "--")).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+    })[char]);
+    const price = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "--";
+    const compact = (value) => {
+        if (value == null || value === "") return "--";
+        if (typeof value === "boolean") return value ? "SIM" : "NAO";
+        if (typeof value === "number") return Number.isFinite(value) ? value.toFixed(value % 1 ? 2 : 0) : "--";
+        if (typeof value === "string") return normalize(value.replaceAll("_", " ").toUpperCase());
+        if (Array.isArray(value)) return value.length ? `${value.length} zona(s)` : "--";
+        if (typeof value === "object") {
+            const type = value.type || value.direction || value.side || value.label || value.status;
+            const level = value.level || value.price || value.mid || value.high || value.low;
+            if (type && level) return `${compact(type)} @ ${price(level)}`;
+            if (type) return compact(type);
+            if (value.detected != null) return value.detected ? "DETECTADO" : "NAO";
+        }
+        return String(value);
+    };
+
+    function scoreColor(score) {
+        if (score >= 75) return "#34d399";
+        if (score >= 55) return "#78d9d1";
+        if (score >= 35) return "#f6d58b";
+        return "#f87171";
+    }
+
+    function classify(analysis) {
+        const direction = String(analysis.direction || "NEUTRAL").toUpperCase();
+        const status = String(analysis.status || "").toUpperCase();
+        const score = clamp(analysis.score);
+        if (direction === "BUY") return { label: "COMPRA INSTITUCIONAL", tone: "buy", icon: "fa-arrow-trend-up" };
+        if (direction === "SELL") return { label: "VENDA INSTITUCIONAL", tone: "sell", icon: "fa-arrow-trend-down" };
+        if (status === "NO_TRADE" || status === "DANGEROUS_MARKET" || score < 28) {
+            return { label: "SEM CONFLUENCIA", tone: "blocked", icon: "fa-shield-halved" };
+        }
+        return { label: "FLUXO NEUTRO", tone: "neutral", icon: "fa-scale-balanced" };
+    }
+
+    function setBar(id, value) {
+        const element = $(id);
+        if (element) element.style.setProperty("--value", `${clamp(value)}%`);
+    }
+
+    function setScore(score, confidence) {
+        const ring = $("flowScoreRing");
+        const color = scoreColor(score);
+        if (ring) {
+            ring.style.setProperty("--score", clamp(score));
+            ring.style.setProperty("--score-color", color);
+        }
+        text("flowScore", Math.round(clamp(score)));
+        text("flowConfidence", `${Math.round(clamp(confidence))}%`);
+        text("flowScoreText", score >= 75 ? "Confluência institucional forte." : score >= 55 ? "Leitura operacional em validação." : score >= 35 ? "Fluxo exige confirmação adicional." : "Sem qualidade operacional suficiente.");
+    }
+
+    function setStrength(value, tone) {
+        const strength = clamp(value);
+        const active = Math.round(strength / 10);
+        const color = tone === "sell" ? "#f87171" : tone === "blocked" ? "#f6d58b" : tone === "buy" ? "#34d399" : "#78d9d1";
+        text("flowStrength", Math.round(strength));
+        text("flowStrengthLabel", strength >= 75 ? "Fluxo dominante" : strength >= 55 ? "Pressao relevante" : strength >= 35 ? "Fluxo moderado" : "Baixa conviccao");
+        $("flowStrengthLadder")?.querySelectorAll("i").forEach((item, index) => {
+            item.classList.toggle("active", index < active);
+            item.style.setProperty("--strength-color", color);
+        });
+    }
+
+    function behaviorItem(label, value) {
+        return `<div class="flow-behavior-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(compact(value))}</strong></div>`;
+    }
+
+    function renderBehavior(analysis) {
+        const behavior = analysis.institutionalBehavior || {};
+        const flow = behavior.flow || {};
+        const volume = behavior.volume || {};
+        const liquidity = analysis.liquidity || {};
+        const structure = analysis.marketStructure || {};
+        const sweep = liquidity.sweep || {};
+        const fvg = structure.fvg || {};
+        const pressure = flow.pressure || flow.order_flow_bias || "BALANCED";
+        const volumeText = volume.signal || volume.dominant_side || volume.confidence || "NEUTRAL";
+        $("flowBehavior").innerHTML = [
+            behaviorItem("Smart Money", behavior.smartMoneyBias || analysis.smc_direction || "neutral"),
+            behaviorItem("Liquidez", liquidity.nearest || liquidity.zones || "--"),
+            behaviorItem("Sweep", sweep.detected ? sweep : "NAO"),
+            behaviorItem("FVG", fvg || "--"),
+            behaviorItem("Pressao", pressure),
+            behaviorItem("Volume institucional", volumeText),
+        ].join("");
+    }
+
+    async function loadFlow() {
+        const symbol = $("flowAsset").value;
+        const timeframe = $("flowTimeframe").value;
+        const runButton = $("flowGenerate");
+        text("flowDeskState", "ANALISANDO");
+        text("flowChartTitle", `${symbol} - ${timeframe}`);
+        $("flowStateDot")?.classList.remove("error");
+        runButton?.classList.add("loading");
+
+        try {
+            const response = await fetch(`/api/flow-analysis?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&assetType=crypto`);
+            const data = await response.json();
+            const analysis = data.institutional || {};
+            const probabilities = analysis.probabilities || {};
+            const tradePlan = analysis.tradePlan || {};
+            const risk = analysis.risk || {};
+            const direction = classify(analysis);
+            const buy = clamp(probabilities.buy);
+            const sell = clamp(probabilities.sell);
+            const sideways = clamp(probabilities.sideways);
+            const score = clamp(analysis.score);
+            const confidence = clamp(analysis.confidence);
+            const flowScore = clamp((analysis.institutionalBehavior || {}).flow?.flow_score || ((buy + sell + score) / 2));
+
+            $("flowDecisionCard")?.setAttribute("data-tone", direction.tone);
+            $("flowDirectionIcon").innerHTML = `<i class="fas ${direction.icon}"></i>`;
+            text("flowDeskState", analysis.status || (data.success ? "CONCLUIDO" : "SEM DADOS"));
+            text("flowUpdated", new Date().toLocaleTimeString("pt-BR"));
+            text("flowDirection", direction.label);
+            text("flowStatus", analysis.aiExplanation || data.error || "Sem confluência institucional suficiente.");
+            text("flowProbBuy", `${Math.round(buy)}%`);
+            text("flowProbSell", `${Math.round(sell)}%`);
+            text("flowProbSideways", `${Math.round(sideways)}%`);
+            setBar("flowBuyBar", buy);
+            setBar("flowSellBar", sell);
+            setBar("flowNeutralBar", sideways);
+            setScore(score, confidence);
+            setStrength(flowScore, direction.tone);
+            text("flowEntryAllowed", analysis.status === "HIGH_PROBABILITY" ? "LIBERADA" : "AGUARDAR");
+            text("flowEntry", price(tradePlan.entry));
+            text("flowStop", price(tradePlan.stopLoss));
+            text("flowTp1", price(tradePlan.takeProfit1));
+            text("flowTp2", price(tradePlan.takeProfit2));
+            text("flowRR", tradePlan.riskReward ? `1:${Number(tradePlan.riskReward).toFixed(2)}` : "--");
+            text("flowInvalidation", tradePlan.cancelCondition || (risk.rejections || [])[0] || "--");
+            $("flowNarrative").textContent = normalize(analysis.aiExplanation || data.aiNarrative?.summary || "Leitura concluída.");
+            renderBehavior(analysis);
+        } catch (error) {
+            $("flowStateDot")?.classList.add("error");
+            text("flowDeskState", "ERRO");
+            text("flowStatus", "Não foi possível carregar a leitura de fluxo agora.");
+            text("flowDirection", "SEM CONFLUENCIA");
+            $("flowDecisionCard")?.setAttribute("data-tone", "blocked");
+        } finally {
+            runButton?.classList.remove("loading");
+        }
+    }
+
+    $("flowGenerate")?.addEventListener("click", loadFlow);
+    $("flowAsset")?.addEventListener("change", loadFlow);
+    $("flowTimeframe")?.addEventListener("change", loadFlow);
+    loadFlow();
+})();
+</script>
+{% endblock %}

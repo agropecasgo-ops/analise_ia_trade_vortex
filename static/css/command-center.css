@@ -1,0 +1,391 @@
+/* FinanceAI Command Center visual layer */
+
+.professional-dashboard,
+.live-shell,
+.signals-page,
+.institutional-shell,
+.operacional-shell,
+.operacional-live-shell {
+    --cc-bg: #071012;
+    --cc-panel: rgba(13, 23, 26, 0.86);
+    --cc-panel-soft: rgba(20, 33, 37, 0.72);
+    --cc-border: rgba(167, 221, 219, 0.13);
+    --cc-cyan: #38f2e7;
+    --cc-green: #34d399;
+    --cc-amber: #f5c542;
+    --cc-red: #fb7185;
+    --cc-muted: #8da4aa;
+    position: relative;
+    isolation: isolate;
+}
+
+.professional-dashboard::before,
+.live-shell::before,
+.signals-page::before,
+.institutional-shell::before,
+.operacional-shell::before,
+.operacional-live-shell::before {
+    content: "";
+    position: fixed;
+    inset: 74px 0 0 var(--sidebar-width, 280px);
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(900px 480px at 22% 0%, rgba(56, 242, 231, 0.10), transparent 62%),
+        radial-gradient(760px 460px at 90% 8%, rgba(245, 197, 66, 0.08), transparent 64%),
+        linear-gradient(180deg, rgba(7, 16, 18, 0.92), rgba(3, 6, 7, 0.98));
+}
+
+.professional-dashboard::after,
+.live-shell::after,
+.signals-page::after,
+.institutional-shell::after,
+.operacional-shell::after,
+.operacional-live-shell::after {
+    content: "";
+    position: fixed;
+    inset: 74px 0 0 var(--sidebar-width, 280px);
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.42;
+    background-image:
+        linear-gradient(rgba(56, 242, 231, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(56, 242, 231, 0.026) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 78%);
+}
+
+.analysis-card,
+.detailed-card,
+.market-card,
+.chart-section-pro,
+.chart-container,
+.live-command-header,
+.live-toolbar,
+.live-chart-panel,
+.live-ia-panel > .analysis-card,
+.live-status-card,
+.live-signals-panel,
+.signals-hero,
+.signals-toolbar,
+.signals-section,
+.signal-realtime-card,
+.institutional-header,
+.institutional-controls,
+.institutional-chart-panel,
+.institutional-decision-card,
+.institutional-card,
+.institutional-metric,
+.institutional-explanation-card,
+.institutional-narrative-card,
+.operacional-toolbar,
+.operacional-status-strip,
+.operacional-chart-panel,
+.operacional-reading-panel > .analysis-card,
+.operacional-panels > .analysis-card {
+    border: 1px solid var(--cc-border) !important;
+    border-top-color: rgba(56, 242, 231, 0.28) !important;
+    border-radius: 12px !important;
+    background:
+        linear-gradient(145deg, rgba(15, 27, 31, 0.90), rgba(4, 8, 9, 0.88)),
+        radial-gradient(420px 190px at 18% 0%, rgba(56, 242, 231, 0.07), transparent 70%) !important;
+    box-shadow:
+        0 24px 70px rgba(0, 0, 0, 0.48),
+        inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+}
+
+.trading-chart,
+.live-chart,
+.operacional-chart,
+.institutional-chart,
+#chart-container,
+#live-chart,
+#opLiveChart,
+#operacionalChart,
+#institutionalChart {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    background:
+        linear-gradient(180deg, rgba(3, 8, 9, 0.84), rgba(2, 4, 5, 0.96)),
+        radial-gradient(760px 320px at 38% 28%, rgba(56, 242, 231, 0.10), transparent 70%) !important;
+}
+
+.trading-chart::before,
+.live-chart::before,
+.operacional-chart::before,
+.institutional-chart::before,
+#chart-container::before,
+#opLiveChart::before,
+#operacionalChart::before,
+#institutionalChart::before {
+    content: "";
+    position: absolute;
+    inset: 18px 24px 64px;
+    z-index: 0;
+    opacity: 0.44;
+    transform: rotateX(10deg) rotateY(-7deg) skewX(-4deg);
+    transform-origin: center;
+    background:
+        radial-gradient(circle at 18% 58%, rgba(251, 113, 133, 0.82) 0 3px, transparent 4px),
+        radial-gradient(circle at 47% 38%, rgba(52, 211, 153, 0.9) 0 4px, transparent 5px),
+        radial-gradient(circle at 62% 51%, rgba(245, 197, 66, 0.82) 0 3px, transparent 4px),
+        radial-gradient(circle at 78% 43%, rgba(56, 242, 231, 0.84) 0 3px, transparent 4px),
+        linear-gradient(90deg, rgba(251, 113, 133, 0.24), rgba(245, 197, 66, 0.10) 38%, rgba(56, 242, 231, 0.22)),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.032) 0 1px, transparent 1px 30px),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.026) 0 1px, transparent 1px 44px);
+    clip-path: polygon(
+        4% 44%, 12% 28%, 24% 24%, 31% 34%, 26% 50%, 34% 60%, 29% 78%, 18% 70%, 12% 56%,
+        39% 38%, 46% 28%, 56% 31%, 62% 42%, 58% 57%, 49% 60%, 42% 51%,
+        63% 31%, 76% 23%, 91% 32%, 95% 49%, 86% 58%, 76% 53%, 70% 66%, 59% 61%, 66% 47%
+    );
+}
+
+.trading-chart > *,
+.live-chart > *,
+.operacional-chart > *,
+.institutional-chart > *,
+#chart-container > *,
+#opLiveChart > *,
+#operacionalChart > *,
+#institutionalChart > * {
+    position: relative;
+    z-index: 1;
+}
+
+.score-circle,
+.score-ring,
+.confluence-score-circle,
+.flow-score-ring,
+.monitor-radar-card:nth-child(3)::after {
+    background:
+        radial-gradient(circle at center, rgba(4, 8, 9, 0.98) 0 58%, transparent 59%),
+        conic-gradient(from 220deg, var(--cc-red), var(--cc-amber), var(--cc-green), var(--cc-cyan), rgba(255, 255, 255, 0.10)) !important;
+    border: 1px solid rgba(56, 242, 231, 0.22) !important;
+    box-shadow: inset 0 0 34px rgba(0, 0, 0, 0.48), 0 0 34px rgba(56, 242, 231, 0.13) !important;
+}
+
+.monitor-radar-card:nth-child(3)::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    bottom: 12px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    opacity: 0.86;
+}
+
+.live-status-card strong,
+.signal-type,
+.main-signal,
+.score-number,
+.confluence-score-value,
+.institutional-decision-card > strong {
+    color: var(--cc-cyan) !important;
+    text-shadow: 0 0 24px rgba(56, 242, 231, 0.22);
+}
+
+.live-metrics-grid div,
+.live-context-grid div,
+.signal-level-grid div,
+.institutional-probabilities div,
+.institutional-levels div,
+.operacional-status-strip div,
+.info-item,
+.level {
+    border-radius: 8px !important;
+    background:
+        linear-gradient(180deg, rgba(56, 242, 231, 0.09), transparent 52%),
+        rgba(4, 9, 10, 0.70) !important;
+}
+
+@media (max-width: 768px) {
+    .professional-dashboard::before,
+    .live-shell::before,
+    .signals-page::before,
+    .institutional-shell::before,
+    .operacional-shell::before,
+    .operacional-live-shell::before,
+    .professional-dashboard::after,
+    .live-shell::after,
+    .signals-page::after,
+    .institutional-shell::after,
+    .operacional-shell::after,
+    .operacional-live-shell::after {
+        inset-left: 0;
+    }
+}
+
+/* Sidebar inspired by compact institutional command tools */
+.sidebar {
+    padding: 14px !important;
+    background:
+        radial-gradient(220px 320px at 50% 0%, rgba(20, 184, 166, 0.22), transparent 72%),
+        linear-gradient(180deg, #071313 0%, #020707 100%) !important;
+}
+
+.sidebar::after {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    z-index: -1;
+    border: 1px solid rgba(45, 212, 191, 0.14);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(11, 29, 28, 0.76), rgba(2, 8, 8, 0.82));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.045),
+        0 0 44px rgba(20, 184, 166, 0.08);
+    pointer-events: none;
+}
+
+.sidebar-profile-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 58px;
+    margin: 2px 4px 12px;
+    padding: 10px;
+    border: 1px solid rgba(45, 212, 191, 0.16);
+    border-radius: 16px;
+    background: linear-gradient(145deg, rgba(15, 44, 41, 0.78), rgba(2, 10, 10, 0.82));
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.sidebar-profile-card img {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 2px solid rgba(45, 212, 191, 0.72);
+    box-shadow: 0 0 18px rgba(45, 212, 191, 0.22);
+}
+
+.sidebar-profile-card small,
+.sidebar-create-card small,
+.sidebar-action-card small {
+    display: block;
+    color: #78a7a5;
+    font-size: 10px;
+    line-height: 1.2;
+}
+
+.sidebar-profile-card strong,
+.sidebar-action-card strong,
+.sidebar-create-card strong {
+    display: block;
+    color: #efffff;
+    font-size: 13px;
+    line-height: 1.2;
+}
+
+.sidebar-header {
+    min-height: auto !important;
+    margin: 0 4px 14px;
+    padding: 10px 4px 14px !important;
+    border-bottom: 1px solid rgba(45, 212, 191, 0.10) !important;
+}
+
+.sidebar-header h2 {
+    font-size: 20px !important;
+}
+
+.sidebar-nav {
+    gap: 8px !important;
+    padding: 0 0 12px !important;
+}
+
+.nav-item {
+    min-height: 48px !important;
+    border-radius: 13px !important;
+    color: #8fa6a8 !important;
+    font-weight: 780 !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+}
+
+.nav-item i {
+    color: #5eead4 !important;
+    opacity: 0.9;
+    font-size: 17px;
+}
+
+.nav-item:hover,
+.nav-item.active {
+    color: #f3ffff !important;
+    background: linear-gradient(90deg, rgba(45, 212, 191, 0.24), rgba(45, 212, 191, 0.08)) !important;
+    border-color: rgba(45, 212, 191, 0.42) !important;
+    box-shadow:
+        inset 0 0 22px rgba(45, 212, 191, 0.055),
+        0 12px 30px rgba(0, 0, 0, 0.28),
+        0 0 22px rgba(45, 212, 191, 0.08) !important;
+}
+
+.nav-item.active i {
+    color: #34d399 !important;
+    filter: drop-shadow(0 0 10px rgba(52, 211, 153, 0.38));
+}
+
+.sidebar-footer {
+    display: grid;
+    gap: 12px;
+    padding: 14px 4px 4px !important;
+    border-top: 1px solid rgba(45, 212, 191, 0.08) !important;
+}
+
+.sidebar-action-card,
+.sidebar-create-card {
+    border-radius: 14px;
+    border: 1px solid rgba(45, 212, 191, 0.16);
+    background: linear-gradient(145deg, rgba(12, 29, 28, 0.82), rgba(2, 9, 9, 0.88));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 14px 34px rgba(0, 0, 0, 0.26);
+}
+
+.sidebar-action-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+}
+
+.sidebar-action-card i {
+    color: #f3f99d;
+    filter: drop-shadow(0 0 10px rgba(243, 249, 157, 0.28));
+}
+
+.sidebar-create-card {
+    display: grid;
+    place-items: center;
+    gap: 6px;
+    min-height: 92px;
+    padding: 12px;
+    text-align: center;
+    border-style: dashed;
+}
+
+.sidebar-create-card span {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    color: #02201d;
+    background: #2dd4bf;
+    box-shadow: 0 0 22px rgba(45, 212, 191, 0.55);
+}
+
+.sidebar .user-profile {
+    display: none !important;
+}
+
+body.sidebar-collapsed .sidebar-profile-card div,
+body.sidebar-collapsed .sidebar-action-card div,
+body.sidebar-collapsed .sidebar-create-card strong,
+body.sidebar-collapsed .sidebar-create-card small {
+    display: none;
+}
+
+body.sidebar-collapsed .sidebar-profile-card,
+body.sidebar-collapsed .sidebar-action-card {
+    justify-content: center;
+    padding: 8px;
+}

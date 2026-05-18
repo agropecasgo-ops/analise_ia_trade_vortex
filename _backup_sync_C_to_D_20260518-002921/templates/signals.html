@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Sinais IA em Tempo Real - FinanceAI{% endblock %}
+
+{% block content %}
+<div class="signals-page">
+    <section class="signals-hero">
+        <div>
+            <span class="live-kicker">Layered AI Signal Engine</span>
+            <h1>Sinais IA em Tempo Real</h1>
+            <p>Sinais proprios gerados por candles, contexto macro, estrutura, confirmacao e score IA.</p>
+        </div>
+        <div class="signals-stats">
+            <div><span>Ativos</span><strong id="signalsActiveCount">0</strong></div>
+            <div><span>Finalizados</span><strong id="signalsHistoryCount">0</strong></div>
+            <div><span>Conexao</span><strong id="signalsConnection">--</strong></div>
+        </div>
+    </section>
+
+    <section class="signals-toolbar">
+        <select id="signalsMarketSelect" class="form-control-premium">
+            <option value="crypto">Criptomoedas</option>
+        </select>
+        <select id="signalsAssetSelect" class="form-control-premium">
+            <option value="BTCUSDT">BTCUSDT - Bitcoin</option>
+        </select>
+        <select id="signalsTimeframeSelect" class="form-control-premium">
+            <option value="1m">1m</option>
+            <option value="5m">5m</option>
+            <option value="15m" selected>15m</option>
+            <option value="1h">1h</option>
+        </select>
+        <select id="signalsDirectionFilter" class="form-control-premium">
+            <option value="all">Todas direcoes</option>
+            <option value="BUY">Compra</option>
+            <option value="SELL">Venda</option>
+        </select>
+        <select id="signalsStatusFilter" class="form-control-premium">
+            <option value="all">Todos status</option>
+            <option value="Aguardando entrada">Aguardando entrada</option>
+            <option value="Entrada acionada">Entrada acionada</option>
+            <option value="Em andamento">Em andamento</option>
+            <option value="Break Even ativado">Break Even ativado</option>
+            <option value="Alvo 1 atingido">Alvo 1 atingido</option>
+            <option value="Alvo 2 atingido">Alvo 2 atingido</option>
+            <option value="Alvo final atingido">Alvo final atingido</option>
+            <option value="Stop atingido">Stop atingido</option>
+            <option value="Cancelado">Cancelado</option>
+        </select>
+    </section>
+
+    <section class="signals-section">
+        <div class="card-header-detailed">
+            <h3>Sinais ativos</h3>
+            <span class="badge-ai" id="signalsUpdatedAt">--</span>
+        </div>
+        <div class="signals-grid" id="signalsActiveGrid">
+            <div class="live-empty-signal">Aguardando score acima de 80...</div>
+        </div>
+    </section>
+
+    <section class="signals-section">
+        <div class="card-header-detailed">
+            <h3>Historico de sinais</h3>
+            <span class="badge-ai">finalizados</span>
+        </div>
+        <div class="signals-grid compact" id="signalsHistoryGrid">
+            <div class="live-empty-signal">Nenhum sinal finalizado ainda.</div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/websocket-engine.js') }}?v=20260512-4"></script>
+<script src="{{ url_for('static', filename='js/signals-realtime.js') }}?v=20260512-4"></script>
+{% endblock %}

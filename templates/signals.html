@@ -2,6 +2,197 @@
 
 {% block title %}Sinais IA em Tempo Real - FinanceAI{% endblock %}
 
+{% block extra_css %}
+<style>
+    .signals-page {
+        max-width: 1680px;
+        margin: 0 auto;
+    }
+
+    .signals-hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: end;
+    }
+
+    .signals-hero h1 {
+        font-size: clamp(2rem, 4vw, 3.6rem);
+    }
+
+    .signals-toolbar {
+        grid-template-columns: repeat(5, minmax(150px, 1fr));
+    }
+
+    .signals-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(260px, 1fr));
+        gap: 16px;
+    }
+
+    .signal-realtime-card {
+        position: relative;
+        overflow: hidden;
+        min-height: 238px;
+        padding: 18px !important;
+        border-radius: 18px !important;
+    }
+
+    .signal-realtime-card::before {
+        content: "";
+        position: absolute;
+        inset: auto 0 0;
+        height: 105px;
+        opacity: 0.74;
+        background:
+            radial-gradient(circle at var(--spark-a, 18%) 54%, currentColor 0 3px, transparent 4px),
+            radial-gradient(circle at var(--spark-b, 48%) 38%, currentColor 0 3px, transparent 4px),
+            radial-gradient(circle at var(--spark-c, 82%) 58%, currentColor 0 3px, transparent 4px),
+            linear-gradient(135deg, transparent 0 18%, currentColor 19% 20%, transparent 21% 38%, currentColor 39% 40%, transparent 41% 62%, currentColor 63% 64%, transparent 65%),
+            radial-gradient(180px 80px at 60% 86%, currentColor, transparent 68%);
+        color: rgba(52, 211, 153, 0.65);
+        mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 92%);
+    }
+
+    .signal-realtime-card.sell::before {
+        color: rgba(251, 113, 133, 0.68);
+    }
+
+    .signal-realtime-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(120deg, rgba(255, 255, 255, 0.08), transparent 18%, transparent 72%, rgba(56, 242, 231, 0.08));
+    }
+
+    .signal-realtime-card > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .signal-realtime-head h4 {
+        margin: 0;
+        color: #f3ffff;
+        font-size: 1rem;
+    }
+
+    .signal-realtime-head small {
+        color: #8da4aa;
+    }
+
+    .signal-force {
+        min-width: 68px;
+        min-height: 68px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        color: #f3ffff;
+        background:
+            radial-gradient(circle at center, rgba(4, 8, 9, 0.98) 0 58%, transparent 59%),
+            conic-gradient(from 220deg, #fb7185, #f5c542, #34d399, #38f2e7);
+        box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.46), 0 0 22px rgba(56, 242, 231, 0.18);
+        font-weight: 900;
+    }
+
+    .signal-direction-row {
+        margin-top: 18px;
+    }
+
+    .signal-direction-row strong {
+        font-size: 2rem;
+        line-height: 1;
+    }
+
+    .signal-realtime-card.buy .signal-direction-row strong {
+        color: #34d399;
+    }
+
+    .signal-realtime-card.sell .signal-direction-row strong {
+        color: #fb7185;
+    }
+
+    .signal-level-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .signals-history-table {
+        display: grid;
+        gap: 6px;
+    }
+
+    .signals-history-row {
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr 0.8fr 0.9fr 1fr;
+        gap: 12px;
+        align-items: center;
+        min-height: 58px;
+        padding: 10px 12px;
+        border: 1px solid rgba(167, 221, 219, 0.09);
+        border-radius: 10px;
+        background: rgba(4, 9, 10, 0.56);
+    }
+
+    .signals-history-row.header {
+        min-height: 42px;
+        color: #8da4aa;
+        font-size: 0.72rem;
+        font-weight: 850;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        background: rgba(56, 242, 231, 0.045);
+    }
+
+    .signals-history-row strong {
+        color: #f3ffff;
+    }
+
+    .signals-history-row small {
+        display: block;
+        color: #8da4aa;
+    }
+
+    .history-side.buy {
+        color: #34d399;
+    }
+
+    .history-side.sell {
+        color: #fb7185;
+    }
+
+    .history-status {
+        justify-self: end;
+        padding: 5px 9px;
+        border-radius: 999px;
+        color: #dffafa;
+        background: rgba(56, 242, 231, 0.10);
+        border: 1px solid rgba(56, 242, 231, 0.16);
+        font-size: 0.74rem;
+        font-weight: 850;
+    }
+
+    @media (max-width: 1280px) {
+        .signals-grid,
+        .signals-toolbar {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 760px) {
+        .signals-hero,
+        .signals-grid,
+        .signals-toolbar,
+        .signals-history-row {
+            grid-template-columns: 1fr;
+        }
+
+        .history-status {
+            justify-self: start;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="signals-page">
     <section class="signals-hero">
@@ -73,5 +264,5 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/websocket-engine.js') }}?v=20260512-4"></script>
-<script src="{{ url_for('static', filename='js/signals-realtime.js') }}?v=20260512-4"></script>
+<script src="{{ url_for('static', filename='js/signals-realtime.js') }}?v=20260517-1"></script>
 {% endblock %}

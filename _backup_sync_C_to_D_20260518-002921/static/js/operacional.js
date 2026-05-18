@@ -390,23 +390,14 @@
         state.websocketEngine.connectKline({
             symbol: state.symbol,
             timeframe: state.timeframe,
+            includeTrades: true,
             onState: (s) => setConnection(s),
             onKline: (kline) => {
-                const candle = {
-                    time: Math.floor(kline.t / 1000),
-                    open: Number(kline.o),
-                    high: Number(kline.h),
-                    low: Number(kline.l),
-                    close: Number(kline.c),
-                };
-                const volume = {
-                    time: candle.time,
-                    value: Number(kline.v),
-                    color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
-                };
-                state.chartEngine?.update(candle, volume);
+                const candle = kline.candle;
+                const volume = kline.volume;
+                if (!state.chartEngine?.update(candle, volume)) return;
                 setText('opLivePrice', formatPrice(candle.close));
-                if (kline.x) {
+                if (kline.isClosed) {
                     console.log('[Operacional] Candle fechado, re-analisando.');
                     refreshLive();
                 }
@@ -456,7 +447,7 @@
             value: Number(tick.volume ?? previous?.volume ?? 0) || 0,
             color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
         };
-        state.chartEngine?.update(candle, volume);
+        if (!state.chartEngine?.update(candle, volume)) return;
         setText('opLivePrice', formatPrice(price));
     }
 
@@ -467,6 +458,36 @@
 
     function setConnection(value) {
         setText('opConnectionStatus', value);
+        updateRealtimeBadge(value);
+    }
+
+    function updateRealtimeBadge(rawState) {
+        const status = realtimeBadgeStatus(rawState);
+        let badge = document.getElementById('realtimeStatusBadge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'realtimeStatusBadge';
+            badge.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;padding:6px 10px;border-radius:999px;font:600 11px Inter,Arial,sans-serif;letter-spacing:0;background:rgba(3,7,18,.86);border:1px solid rgba(148,163,184,.24);box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:none;';
+            document.body.appendChild(badge);
+        }
+        badge.textContent = status.label;
+        badge.style.color = status.color;
+        badge.style.borderColor = status.border;
+    }
+
+    function realtimeBadgeStatus(rawState) {
+        const status = String(rawState || '').toLowerCase();
+        const wsActive = state.websocketEngine?.socket?.readyState === WebSocket.OPEN;
+        if (status.includes('rest') || status.includes('tick') || status.includes('polling') || status.includes('historico') || status.includes('indisponivel')) {
+            return { label: 'Fallback REST/Tick', color: '#facc15', border: 'rgba(250,204,21,.36)' };
+        }
+        if (status.includes('reconect') || status.includes('falh') || status.includes('atualizando') || status.includes('carregando')) {
+            return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
+        }
+        if (wsActive || status.includes('websocket') || status.includes('bybit')) {
+            return { label: 'Realtime ativo', color: '#22c55e', border: 'rgba(34,197,94,.38)' };
+        }
+        return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
     }
 
     function renderZoneLines(markLines, zones, candles) {
