@@ -13,6 +13,7 @@ import requests
 
 from .binance_client import BinanceMarketData
 from .bybit_provider import BybitMarketData
+from .candle_store import clear_old_cache, get_candles, save_candles
 from .mt5_provider import MT5Provider
 from .profit_rtd_provider import ProfitRTDProvider
 
@@ -158,6 +159,9 @@ TIMEFRAME_SECONDS = {
 }
 
 
+_LAST_CACHE_CLEANUP = 0
+
+
 class MarketDataRouter:
     def __init__(self, timeout=10):
         self.bybit = BybitMarketData(timeout=timeout)
@@ -167,6 +171,7 @@ class MarketDataRouter:
         self.session = requests.Session()
         self.timeout = timeout
         self._last_meta = {}
+        self._cleanup_candle_cache()
 
     def normalize_symbol(self, symbol):
         value = (symbol or "BTCUSDT").replace("-", "").replace("/", "").upper().strip()
@@ -217,6 +222,23 @@ class MarketDataRouter:
         symbol = self.normalize_symbol(symbol)
         market = self.identify_market(symbol)
         limit = max(60, min(int(limit or 500), 1000))
+        cached = get_candles(symbol, interval, limit)
+        if self._cache_is_recent(cached, interval, limit):
+            self._set_cache_meta(symbol, market, interval, cached, "Candles carregados do cache local recente.")
+            return cached
+        try:
+            df = self._provider_klines(symbol, interval, limit, market)
+            provider = self.last_meta(symbol).get("source") or MARKETS.get(market, {}).get("source") or "unknown"
+            save_candles(symbol, interval, df, provider)
+            return df
+        except Exception as error:
+            if self._cache_is_recent(cached, interval, limit):
+                message = f"Provider indisponivel; usando ultimo cache local. {error}"
+                self._set_cache_meta(symbol, market, interval, cached, message)
+                return cached
+            raise
+
+    def _provider_klines(self, symbol, interval, limit, market):
         if market == "crypto":
             return self._crypto_klines(symbol, interval, limit, market)
         if market == "futures_b3":
@@ -224,6 +246,59 @@ class MarketDataRouter:
         if market in {"forex", "commodity", "index"}:
             return self._mt5_or_yahoo_klines(symbol, interval, limit, market)
         return self._yahoo_klines(symbol, interval, limit, market)
+
+    def _cache_is_recent(self, df, interval, limit):
+        if df is None or df.empty:
+            return False
+        if len(df) < min(int(limit or 60), 60):
+            return False
+        updated_at = df["updated_at"].iloc[-1] if "updated_at" in df else None
+        if not updated_at:
+            return False
+        try:
+            updated_ts = pd.to_datetime(updated_at, utc=True).timestamp()
+        except Exception:
+            return False
+        ttl = min(30, max(5, TIMEFRAME_SECONDS.get(interval, 3600) * 0.25))
+        if (time.time() - updated_ts) > ttl:
+            return False
+        return not self._last_candle_is_stale(df, interval)
+
+    def _last_candle_is_stale(self, df, interval):
+        try:
+            last_ts = df.index[-1].timestamp()
+        except Exception:
+            return True
+        max_age = TIMEFRAME_SECONDS.get(interval, 3600) * 2.5
+        if interval in ["1d", "1w"]:
+            max_age = 60 * 60 * 24 * 5
+        return (time.time() - last_ts) > max_age
+
+    def _set_cache_meta(self, symbol, market, interval, df, message):
+        provider = df["provider"].iloc[-1] if "provider" in df and not df.empty else "candle_store"
+        config = MARKETS.get(market, MARKETS["us_stock"])
+        self._set_meta(
+            symbol,
+            market,
+            "candle_store",
+            self._market_status(df, interval, market),
+            message,
+            len(df),
+            config["streaming"],
+            True,
+            provider_original=provider,
+        )
+
+    def _cleanup_candle_cache(self):
+        global _LAST_CACHE_CLEANUP
+        now = time.time()
+        if now - _LAST_CACHE_CLEANUP < 60 * 60 * 6:
+            return
+        _LAST_CACHE_CLEANUP = now
+        try:
+            clear_old_cache()
+        except Exception:
+            pass
 
     def get_24h_ticker(self, symbol):
         symbol = self.normalize_symbol(symbol)
@@ -475,12 +550,25 @@ class MarketDataRouter:
         except Exception:
             return None
 
-    def _set_meta(self, symbol, market, source, status, message, candles_count, streaming, fallback=False, tick=None):
+    def _set_meta(
+        self,
+        symbol,
+        market,
+        source,
+        status,
+        message,
+        candles_count,
+        streaming,
+        fallback=False,
+        tick=None,
+        provider_original=None,
+    ):
         self._last_meta[self.normalize_symbol(symbol)] = {
             "symbol": self.normalize_symbol(symbol),
             "market": market,
             "market_label": MARKETS.get(market, {}).get("label", market),
             "source": source,
+            "provider_original": provider_original,
             "market_status": status,
             "streaming": streaming,
             "message": message,
