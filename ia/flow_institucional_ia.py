@@ -14,8 +14,10 @@ import pandas as pd
 
 try:
     from .institutional_unified_engine import build_institutional_unified_analysis
+    from .order_flow_engine import build_order_flow_context
 except ImportError:  # Allows direct execution/import from inside the ia folder.
     from institutional_unified_engine import build_institutional_unified_analysis
+    from order_flow_engine import build_order_flow_context
 
 
 class FlowInstitucionalIA:
@@ -57,6 +59,7 @@ class FlowInstitucionalIA:
             news=self.news,
             risk_status=self.risk_status,
         )
+        self._attach_order_flow_context(df)
 
         self._sync_state(self.analysis)
         return self.analysis
@@ -102,6 +105,12 @@ class FlowInstitucionalIA:
             and self.direction in {"BUY", "SELL"}
             and (analysis.get("risk") or {}).get("allowed")
         )
+
+    def _attach_order_flow_context(self, df: pd.DataFrame) -> None:
+        order_flow = build_order_flow_context(df)
+        self.analysis["orderFlowContext"] = order_flow
+        behavior = self.analysis.setdefault("institutionalBehavior", {})
+        behavior["orderFlowContext"] = order_flow
 
     def _build_timeframe_map(self, candles: Any, df: pd.DataFrame) -> dict[str, pd.DataFrame]:
         frames = {

@@ -73,6 +73,7 @@
     .flow-panel,
     .flow-score-card,
     .flow-strength-card,
+    .flow-order-card,
     .flow-trade-card {
         min-width: 0;
         border: 1px solid var(--flow-line);
@@ -246,6 +247,7 @@
     .flow-panel,
     .flow-score-card,
     .flow-strength-card,
+    .flow-order-card,
     .flow-trade-card {
         padding: 18px;
     }
@@ -286,6 +288,8 @@
 
     .flow-behavior-item,
     .flow-trade-item,
+    .flow-order-kpi,
+    .flow-order-alert,
     .flow-mini-kpi {
         min-width: 0;
         padding: 13px;
@@ -297,6 +301,8 @@
 
     .flow-behavior-item span,
     .flow-trade-item span,
+    .flow-order-kpi span,
+    .flow-order-alert span,
     .flow-mini-kpi span {
         display: block;
         color: var(--flow-muted);
@@ -308,12 +314,44 @@
 
     .flow-behavior-item strong,
     .flow-trade-item strong,
+    .flow-order-kpi strong,
+    .flow-order-alert strong,
     .flow-mini-kpi strong {
         display: block;
         margin-top: 7px;
         color: #dffafa;
         line-height: 1.32;
         overflow-wrap: anywhere;
+    }
+
+    .flow-order-card {
+        margin-top: 16px;
+    }
+
+    .flow-order-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+        gap: 14px;
+    }
+
+    .flow-order-bars,
+    .flow-order-kpis,
+    .flow-order-alerts {
+        display: grid;
+        gap: 10px;
+    }
+
+    .flow-order-kpis {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .flow-order-alerts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .flow-order-alert[data-active="true"] {
+        border-color: rgba(246, 213, 139, 0.34);
+        background: linear-gradient(145deg, rgba(88, 69, 22, 0.38), rgba(4, 8, 10, 0.82));
     }
 
     .flow-side-stack {
@@ -472,7 +510,10 @@
         }
 
         .flow-behavior-grid,
-        .flow-trade-grid {
+        .flow-trade-grid,
+        .flow-order-layout,
+        .flow-order-kpis,
+        .flow-order-alerts {
             grid-template-columns: 1fr;
         }
     }
@@ -597,6 +638,42 @@
             </section>
         </div>
     </div>
+
+    <section class="flow-order-card">
+        <div class="flow-panel-title">
+            <div>
+                <span class="flow-label">Order Flow OHLCV</span>
+                <strong>Contexto institucional auxiliar</strong>
+            </div>
+        </div>
+        <div class="flow-order-layout">
+            <div class="flow-order-bars">
+                <div class="flow-bar-row">
+                    <div class="flow-bar-head"><span>Buy pressure</span><strong id="orderFlowBuyPressure">0%</strong></div>
+                    <div class="flow-bar-track"><div class="flow-bar-fill buy" id="orderFlowBuyBar"></div></div>
+                </div>
+                <div class="flow-bar-row">
+                    <div class="flow-bar-head"><span>Sell pressure</span><strong id="orderFlowSellPressure">0%</strong></div>
+                    <div class="flow-bar-track"><div class="flow-bar-fill sell" id="orderFlowSellBar"></div></div>
+                </div>
+                <div class="flow-order-kpis">
+                    <div class="flow-order-kpi"><span>Flow strength</span><strong id="orderFlowStrength">--</strong></div>
+                    <div class="flow-order-kpi"><span>Imbalance</span><strong id="orderFlowImbalance">--</strong></div>
+                    <div class="flow-order-kpi"><span>Direcao</span><strong id="orderFlowDirection">--</strong></div>
+                </div>
+            </div>
+            <div class="flow-order-alerts">
+                <div class="flow-order-alert" id="orderFlowAbsorptionCard" data-active="false">
+                    <span>Absorption signal</span>
+                    <strong id="orderFlowAbsorption">--</strong>
+                </div>
+                <div class="flow-order-alert" id="orderFlowExhaustionCard" data-active="false">
+                    <span>Exhaustion signal</span>
+                    <strong id="orderFlowExhaustion">--</strong>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <section class="flow-trade-card">
         <div class="flow-panel-title">
@@ -723,6 +800,35 @@
         ].join("");
     }
 
+    function signalLabel(signal) {
+        if (!signal || !signal.detected) return "NAO DETECTADO";
+        const confidence = Number(signal.confidence || 0);
+        return `${signal.side || "DETECTADO"}${confidence ? ` - ${Math.round(confidence)}%` : ""}`;
+    }
+
+    function renderOrderFlow(analysis) {
+        const behavior = analysis.institutionalBehavior || {};
+        const orderFlow = analysis.orderFlowContext || behavior.orderFlowContext || {};
+        const buyPressure = clamp(orderFlow.buy_pressure);
+        const sellPressure = clamp(orderFlow.sell_pressure);
+        const strength = clamp(orderFlow.flow_strength);
+        const imbalance = clamp(orderFlow.imbalance);
+        const absorption = orderFlow.absorption_signal || {};
+        const exhaustion = orderFlow.exhaustion_signal || {};
+
+        text("orderFlowBuyPressure", `${Math.round(buyPressure)}%`);
+        text("orderFlowSellPressure", `${Math.round(sellPressure)}%`);
+        text("orderFlowStrength", `${Math.round(strength)}%`);
+        text("orderFlowImbalance", `${Math.round(imbalance)}%`);
+        text("orderFlowDirection", orderFlow.flow_direction || "--");
+        text("orderFlowAbsorption", signalLabel(absorption));
+        text("orderFlowExhaustion", signalLabel(exhaustion));
+        setBar("orderFlowBuyBar", buyPressure);
+        setBar("orderFlowSellBar", sellPressure);
+        $("orderFlowAbsorptionCard")?.setAttribute("data-active", String(Boolean(absorption.detected)));
+        $("orderFlowExhaustionCard")?.setAttribute("data-active", String(Boolean(exhaustion.detected)));
+    }
+
     async function loadFlow() {
         const symbol = $("flowAsset").value;
         const timeframe = $("flowTimeframe").value;
@@ -770,12 +876,14 @@
             text("flowInvalidation", tradePlan.cancelCondition || (risk.rejections || [])[0] || "--");
             $("flowNarrative").textContent = normalize(analysis.aiExplanation || data.aiNarrative?.summary || "Leitura concluída.");
             renderBehavior(analysis);
+            renderOrderFlow(analysis);
         } catch (error) {
             $("flowStateDot")?.classList.add("error");
             text("flowDeskState", "ERRO");
             text("flowStatus", "Não foi possível carregar a leitura de fluxo agora.");
             text("flowDirection", "SEM CONFLUENCIA");
             $("flowDecisionCard")?.setAttribute("data-tone", "blocked");
+            renderOrderFlow({});
         } finally {
             runButton?.classList.remove("loading");
         }
