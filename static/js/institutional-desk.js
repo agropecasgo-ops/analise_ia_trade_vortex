@@ -4,6 +4,7 @@
             this.assetType = 'crypto';
             this.asset = 'BTCUSDT';
             this.timeframe = '15m';
+            this.operationalMode = 'moderado';
             this.chartEngine = null;
             this.marketData = new window.MarketDataEngine({ provider: 'institutional', ttl: 6000 });
             this.analysisController = null;
@@ -43,6 +44,9 @@
             document.getElementById('institutionalTimeframe')?.addEventListener('change', (event) => {
                 this.timeframe = event.target.value;
             });
+            document.getElementById('institutionalOperationalMode')?.addEventListener('change', (event) => {
+                this.operationalMode = event.target.value;
+            });
             document.getElementById('institutionalGenerate')?.addEventListener('click', () => this.generate(true));
             document.getElementById('institutionalFitChart')?.addEventListener('click', () => this.chartEngine?.fit?.());
             document.getElementById('institutionalModeToggle')?.addEventListener('click', () => this.toggleInstitutionalMode());
@@ -80,6 +84,7 @@
             this.asset = document.getElementById('institutionalAsset')?.value || this.asset;
             this.assetType = document.getElementById('institutionalAssetType')?.value || this.assetType;
             this.timeframe = document.getElementById('institutionalTimeframe')?.value || this.timeframe;
+            this.operationalMode = document.getElementById('institutionalOperationalMode')?.value || this.operationalMode;
             this.setLoading(true);
             this.setState('ANALISANDO', false);
             try {
@@ -109,7 +114,7 @@
             this.analysisController?.abort();
             this.analysisController = new AbortController();
             const suffix = force ? `&refresh=${Date.now()}` : '';
-            const url = `/api/institutional/analysis/${encodeURIComponent(this.asset)}/${encodeURIComponent(this.timeframe)}?assetType=${encodeURIComponent(this.assetType)}${suffix}`;
+            const url = `/api/institutional/analysis/${encodeURIComponent(this.asset)}/${encodeURIComponent(this.timeframe)}?assetType=${encodeURIComponent(this.assetType)}&operationalMode=${encodeURIComponent(this.operationalMode)}${suffix}`;
             const response = await fetch(url, { signal: this.analysisController.signal });
             return response.json();
         }

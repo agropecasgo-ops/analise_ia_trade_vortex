@@ -10,6 +10,8 @@ REQUIRED_FIELDS = {
     "asset",
     "assetType",
     "timeframe",
+    "operationalMode",
+    "operationalContext",
     "direction",
     "confidence",
     "score",
@@ -124,7 +126,13 @@ class InstitutionalUnifiedEngineTests(unittest.TestCase):
             smart_money_fn.return_value = overrides.get("smart_money", {"institutional_bias": "neutral", "false_breakout": {"detected": False}})
             smc_fn.return_value = overrides.get("smc", {"institutional_bias": "neutral", "false_breakout": {"detected": False}, "liquidity_sweep": {"detected": False}})
             wyckoff_fn.return_value = overrides.get("wyckoff", {})
-            return build_institutional_unified_analysis(candles(), "TEST", "1m", "crypto")
+            return build_institutional_unified_analysis(
+                candles(),
+                "TEST",
+                "1m",
+                "crypto",
+                operational_mode=overrides.get("operational_mode", "moderado"),
+            )
 
     def test_payload_always_returns_required_fields(self):
         result = self.analyze()
@@ -213,6 +221,44 @@ class InstitutionalUnifiedEngineTests(unittest.TestCase):
         )
 
         self.assertNotEqual(result["status"], "DANGEROUS_MARKET")
+
+    def test_aggressive_mode_reduces_entry_thresholds(self):
+        result = self.analyze(
+            operational_mode="agressivo",
+            layered=layered("BUY", generated=True, score=58),
+            confirmation=confirmation("BUY", valid=False),
+            volume={"signal": "BULLISH_VOLUME", "dominant_side": "BUYER"},
+            tape={"order_flow_bias": "BUY_FLOW"},
+        )
+
+        self.assertEqual(result["operationalMode"], "agressivo")
+        self.assertEqual(result["status"], "HIGH_PROBABILITY")
+        self.assertEqual(result["direction"], "BUY")
+        self.assertFalse(result["operationalContext"]["thresholds"]["requireStructure"])
+
+    def test_moderate_mode_keeps_balanced_confirmation(self):
+        result = self.analyze(
+            operational_mode="moderado",
+            layered=layered("BUY", generated=True, score=58),
+            confirmation=confirmation("BUY", valid=False),
+            volume={"signal": "BULLISH_VOLUME", "dominant_side": "BUYER"},
+            tape={"order_flow_bias": "BUY_FLOW"},
+        )
+
+        self.assertEqual(result["operationalMode"], "moderado")
+        self.assertEqual(result["status"], "WAIT_CONFIRMATION")
+        self.assertEqual(result["direction"], "NEUTRAL")
+
+    def test_conservative_mode_requires_maximum_confluence(self):
+        result = self.analyze(
+            operational_mode="conservador",
+            layered=layered("BUY", generated=True, score=55),
+        )
+
+        self.assertEqual(result["operationalMode"], "conservador")
+        self.assertEqual(result["status"], "WAIT_CONFIRMATION")
+        self.assertEqual(result["direction"], "NEUTRAL")
+        self.assertTrue(result["operationalContext"]["thresholds"]["requireConfirmation"])
 
 
 if __name__ == "__main__":

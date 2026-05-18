@@ -705,6 +705,14 @@
                 <option value="1d">1d</option>
             </select>
         </div>
+        <div class="institutional-field">
+            <label for="flowOperationalMode">Nível operacional</label>
+            <select id="flowOperationalMode" class="institutional-input">
+                <option value="conservador">Conservador</option>
+                <option value="moderado" selected>Moderado</option>
+                <option value="agressivo">Agressivo</option>
+            </select>
+        </div>
         <button id="flowGenerate" class="institutional-run" type="button">
             <i class="fas fa-diagram-project"></i>
             <span>Analisar Fluxo</span>
@@ -951,6 +959,8 @@
     })[char]);
     const price = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "--";
     const isLatestFlowRequest = (requestId) => requestId === activeFlowRequestId;
+    const selectedAssetType = () => $("flowAsset")?.selectedOptions?.[0]?.dataset?.market || "crypto";
+    const selectedOperationalMode = () => $("flowOperationalMode")?.value || "moderado";
     const compact = (value) => {
         if (value == null || value === "") return "--";
         if (typeof value === "boolean") return value ? "SIM" : "NAO";
@@ -1308,7 +1318,9 @@
         if (!chart) return;
         try {
             text("flowOverlayState", "CARREGANDO CANDLES");
-            const response = await fetch(`/api/candles/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}?limit=260&assetType=crypto`);
+            const assetType = selectedAssetType();
+            const operationalMode = selectedOperationalMode();
+            const response = await fetch(`/api/candles/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}?limit=260&assetType=${encodeURIComponent(assetType)}&operationalMode=${encodeURIComponent(operationalMode)}`);
             const payload = await response.json();
             if (!isLatestFlowRequest(requestId)) return;
             const candles = payload.candles || [];
@@ -1330,12 +1342,40 @@
         }
     }
 
+    async function loadAssets() {
+        const select = $("flowAsset");
+        if (!select) return;
+        try {
+            const response = await fetch("/api/assets");
+            const data = await response.json();
+            const markets = Array.isArray(data.markets) ? data.markets : [];
+            const groups = markets
+                .map((market) => {
+                    const assets = Array.isArray(market.assets) ? market.assets : [];
+                    if (!assets.length) return "";
+                    const options = assets.map((asset) => (
+                        `<option value="${escapeHtml(asset.symbol)}" data-market="${escapeHtml(asset.market || market.key || "crypto")}">${escapeHtml(asset.symbol)} - ${escapeHtml(asset.name || asset.symbol)}</option>`
+                    )).join("");
+                    return `<optgroup label="${escapeHtml(market.label || market.key)}">${options}</optgroup>`;
+                })
+                .join("");
+            if (!groups) return;
+            const previous = select.value || "BTCUSDT";
+            select.innerHTML = groups;
+            select.value = [...select.options].some((option) => option.value === previous) ? previous : "BTCUSDT";
+        } catch (error) {
+            text("flowDeskState", "ATIVOS INDISPONIVEIS");
+        }
+    }
+
     async function loadFlow() {
         const requestId = activeFlowRequestId + 1;
         activeFlowRequestId = requestId;
 
         const symbol = $("flowAsset").value;
         const timeframe = $("flowTimeframe").value;
+        const assetType = selectedAssetType();
+        const operationalMode = selectedOperationalMode();
         const runButton = $("flowGenerate");
         text("flowDeskState", "ANALISANDO");
         text("flowChartTitle", `${symbol} - ${timeframe}`);
@@ -1343,7 +1383,7 @@
         runButton?.classList.add("loading");
 
         try {
-            const response = await fetch(`/api/flow-analysis?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&assetType=crypto`);
+            const response = await fetch(`/api/flow-analysis?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&assetType=${encodeURIComponent(assetType)}&operationalMode=${encodeURIComponent(operationalMode)}`);
             const data = await response.json();
             if (!isLatestFlowRequest(requestId)) return;
             const analysis = data.institutional || {};
@@ -1406,8 +1446,9 @@
     $("flowGenerate")?.addEventListener("click", loadFlow);
     $("flowAsset")?.addEventListener("change", loadFlow);
     $("flowTimeframe")?.addEventListener("change", loadFlow);
+    $("flowOperationalMode")?.addEventListener("change", loadFlow);
     $("flowChartFit")?.addEventListener("click", () => flowChartEngine?.fit?.());
-    loadFlow();
+    loadAssets().finally(loadFlow);
 })();
 </script>
 {% endblock %}

@@ -46,6 +46,47 @@ except Exception:  # pragma: no cover - protected by runtime safe calls
 
 VALID_DIRECTIONS = {"BUY", "SELL", "NEUTRAL"}
 VALID_STATUSES = {"HIGH_PROBABILITY", "WAIT_CONFIRMATION", "DANGEROUS_MARKET", "NO_TRADE"}
+OPERATIONAL_MODES = {
+    "conservador": {
+        "label": "Conservador",
+        "min_score": 82,
+        "min_confidence": 78,
+        "risk_min_score": 82,
+        "min_rr": 1.5,
+        "min_core_votes": 3,
+        "require_layered_signal": True,
+        "require_structure": True,
+        "require_confirmation": True,
+        "no_trade_score": 55,
+        "description": "Maxima confluencia, menos entradas e maior confirmacao.",
+    },
+    "moderado": {
+        "label": "Moderado",
+        "min_score": 70,
+        "min_confidence": 68,
+        "risk_min_score": 70,
+        "min_rr": 1.2,
+        "min_core_votes": 2,
+        "require_layered_signal": True,
+        "require_structure": True,
+        "require_confirmation": False,
+        "no_trade_score": 45,
+        "description": "Equilibrio entre confirmacao e antecipacao.",
+    },
+    "agressivo": {
+        "label": "Agressivo",
+        "min_score": 58,
+        "min_confidence": 52,
+        "risk_min_score": 58,
+        "min_rr": 1.0,
+        "min_core_votes": 2,
+        "require_layered_signal": True,
+        "require_structure": False,
+        "require_confirmation": False,
+        "no_trade_score": 34,
+        "description": "Entradas antecipadas com fluxo/contexto forte e menor confirmacao estrutural.",
+    },
+}
 
 
 def _now() -> str:
@@ -62,6 +103,17 @@ def _num(value: Any, default: float = 0.0) -> float:
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
     return max(low, min(high, value))
+
+
+def _normalize_operational_mode(value: Any) -> str:
+    mode = str(value or "moderado").strip().lower()
+    aliases = {
+        "conservative": "conservador",
+        "moderate": "moderado",
+        "aggressive": "agressivo",
+        "agressiva": "agressivo",
+    }
+    return aliases.get(mode, mode) if aliases.get(mode, mode) in OPERATIONAL_MODES else "moderado"
 
 
 def _clean(candles: pd.DataFrame | None) -> pd.DataFrame:
@@ -102,6 +154,7 @@ class InstitutionalUnifiedEngine:
         candles_by_timeframe: dict[str, pd.DataFrame] | None = None,
         news: dict[str, Any] | None = None,
         risk_status: dict[str, Any] | None = None,
+        operational_mode: str = "moderado",
     ) -> None:
         self.df = _clean(candles)
         self.asset = asset
@@ -109,6 +162,8 @@ class InstitutionalUnifiedEngine:
         self.timeframe = timeframe
         self.news = news or {"available": False, "impact": "UNKNOWN", "items": []}
         self.risk_status = risk_status or {}
+        self.operational_mode = _normalize_operational_mode(operational_mode)
+        self.thresholds = OPERATIONAL_MODES[self.operational_mode]
         self.candles_by_timeframe = self._candles_by_timeframe(candles_by_timeframe)
         self.layers_used: list[str] = []
         self.errors: dict[str, str] = {}
@@ -275,9 +330,22 @@ class InstitutionalUnifiedEngine:
         aux = self._auxiliary_filter_effect(core_direction, technical, volume, tape, wyckoff, smc)
         score = _clamp(base_score + aux["adjustment"])
 
+        layered_generated = bool((layered.get("signal") or {}).get("generated"))
+        directional_votes = buy_core if core_direction == "BUY" else sell_core if core_direction == "SELL" else 0
+        structure_ok = bool(structure.get("valid") and structure.get("direction") == core_direction)
+        confirmation_ok = bool(confirmation.get("valid") and confirmation.get("direction") == core_direction)
+        mode_allows_direction = (
+            core_direction in {"BUY", "SELL"}
+            and score >= self.thresholds["min_score"]
+            and directional_votes >= self.thresholds["min_core_votes"]
+            and (layered_generated or not self.thresholds["require_layered_signal"])
+            and (structure_ok or not self.thresholds["require_structure"])
+            and (confirmation_ok or not self.thresholds["require_confirmation"])
+        )
+
         if core_direction == "NEUTRAL":
             direction = "NEUTRAL"
-        elif score >= 70 and (layered.get("signal") or {}).get("generated"):
+        elif mode_allows_direction:
             direction = core_direction
         else:
             direction = "NEUTRAL"
@@ -302,6 +370,15 @@ class InstitutionalUnifiedEngine:
             "core_votes": {"buy": buy_core, "sell": sell_core, "neutral": core_votes.count("NEUTRAL")},
             "auxiliary_filters": aux,
             "smc_direction": _direction_from_smc(smc),
+            "operational_mode": self.operational_mode,
+            "thresholds": {
+                "min_score": self.thresholds["min_score"],
+                "min_confidence": self.thresholds["min_confidence"],
+                "min_rr": self.thresholds["min_rr"],
+                "min_core_votes": self.thresholds["min_core_votes"],
+                "require_structure": self.thresholds["require_structure"],
+                "require_confirmation": self.thresholds["require_confirmation"],
+            },
         }
 
     def _auxiliary_filter_effect(
@@ -423,7 +500,7 @@ class InstitutionalUnifiedEngine:
             "score": decision["score"],
             "quantity": 1,
         }
-        risk = RiskGuard({"min_ai_score": 70, "min_rr": 1.2}).validate(signal, self.risk_status)
+        risk = RiskGuard({"min_ai_score": self.thresholds["risk_min_score"], "min_rr": self.thresholds["min_rr"]}).validate(signal, self.risk_status)
         risk["educationalOnly"] = True
         return risk
 
@@ -441,9 +518,14 @@ class InstitutionalUnifiedEngine:
         dangerous = bool(smc_false_breakout or confirmation_false_breakout)
         if dangerous:
             return "DANGEROUS_MARKET"
-        if decision["score"] < 45 or (macro.get("blocked") and not structure.get("valid")):
+        if decision["score"] < self.thresholds["no_trade_score"] or (macro.get("blocked") and not structure.get("valid")):
             return "NO_TRADE"
-        if decision["direction"] in {"BUY", "SELL"} and decision["score"] >= 70 and decision["confidence"] >= 68 and risk.get("allowed"):
+        if (
+            decision["direction"] in {"BUY", "SELL"}
+            and decision["score"] >= self.thresholds["min_score"]
+            and decision["confidence"] >= self.thresholds["min_confidence"]
+            and risk.get("allowed")
+        ):
             return "HIGH_PROBABILITY"
         return "WAIT_CONFIRMATION"
 
@@ -551,6 +633,20 @@ class InstitutionalUnifiedEngine:
             "asset": self.asset,
             "assetType": self.asset_type,
             "timeframe": self.timeframe,
+            "operationalMode": self.operational_mode,
+            "operationalContext": {
+                "mode": self.operational_mode,
+                "label": self.thresholds["label"],
+                "description": self.thresholds["description"],
+                "thresholds": {
+                    "minScore": self.thresholds["min_score"],
+                    "minConfidence": self.thresholds["min_confidence"],
+                    "minRiskReward": self.thresholds["min_rr"],
+                    "minCoreVotes": self.thresholds["min_core_votes"],
+                    "requireStructure": self.thresholds["require_structure"],
+                    "requireConfirmation": self.thresholds["require_confirmation"],
+                },
+            },
             "direction": direction if direction in VALID_DIRECTIONS else "NEUTRAL",
             "confidence": round(_clamp(confidence), 2),
             "score": round(_clamp(score), 2),
@@ -593,6 +689,7 @@ def build_institutional_unified_analysis(
     candles_by_timeframe: dict[str, pd.DataFrame] | None = None,
     news: dict[str, Any] | None = None,
     risk_status: dict[str, Any] | None = None,
+    operational_mode: str = "moderado",
 ) -> dict[str, Any]:
     return InstitutionalUnifiedEngine(
         candles=candles,
@@ -602,4 +699,5 @@ def build_institutional_unified_analysis(
         candles_by_timeframe=candles_by_timeframe,
         news=news,
         risk_status=risk_status,
+        operational_mode=operational_mode,
     ).analyze()

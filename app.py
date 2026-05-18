@@ -1170,7 +1170,20 @@ def get_candles(symbol, timeframe):
             return jsonify({"success": False, "error": str(fallback_error), "candles": [], "volumes": [], "overlays": {}}), 200
 
 
-def build_institutional_analysis_payload(requested_symbol, timeframe, asset_type, limit=320):
+def normalize_operational_mode(value):
+    mode = str(value or "moderado").strip().lower()
+    aliases = {
+        "conservative": "conservador",
+        "moderate": "moderado",
+        "aggressive": "agressivo",
+        "agressiva": "agressivo",
+    }
+    mode = aliases.get(mode, mode)
+    return mode if mode in {"conservador", "moderado", "agressivo"} else "moderado"
+
+
+def build_institutional_analysis_payload(requested_symbol, timeframe, asset_type, limit=320, operational_mode="moderado"):
+    operational_mode = normalize_operational_mode(operational_mode)
     df = load_market_data(requested_symbol, timeframe, limit)
     candles_by_timeframe = load_layered_live_candles(requested_symbol, timeframe, df)
     news = {
@@ -1189,6 +1202,7 @@ def build_institutional_analysis_payload(requested_symbol, timeframe, asset_type
         candles_by_timeframe=candles_by_timeframe,
         news=news,
         risk_status={"allowed": True, "rejections": []},
+        operational_mode=operational_mode,
     )
     mode_payload = build_institutional_mode(institutional_payload)
     narrative = build_institutional_narrative(institutional_payload, mode_payload)
@@ -1197,6 +1211,7 @@ def build_institutional_analysis_payload(requested_symbol, timeframe, asset_type
         "symbol": requested_symbol,
         "timeframe": timeframe,
         "assetType": asset_type,
+        "operationalMode": operational_mode,
         "institutional": institutional_payload,
         "institutionalMode": mode_payload,
         "aiNarrative": narrative,
@@ -1211,12 +1226,14 @@ def api_institutional_analysis(symbol, timeframe):
     requested_symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
     asset_type = request.args.get("assetType") or request.args.get("asset_type") or market.identify_market(requested_symbol)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
     try:
         payload = build_institutional_analysis_payload(
             requested_symbol,
             timeframe,
             asset_type,
             int(request.args.get("limit", 320)),
+            operational_mode,
         )
         payload.pop("candles", None)
         payload.pop("candlesByTimeframe", None)
@@ -1228,6 +1245,7 @@ def api_institutional_analysis(symbol, timeframe):
             "symbol": requested_symbol,
             "timeframe": timeframe,
             "assetType": asset_type,
+            "operationalMode": operational_mode,
             "error": str(error),
         })), 200
 
@@ -1237,12 +1255,14 @@ def api_flow_analysis():
     requested_symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
     timeframe = normalize_timeframe(request.args.get("timeframe", "15m"))
     asset_type = request.args.get("assetType") or request.args.get("asset_type") or market.identify_market(requested_symbol)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
     try:
         payload = build_institutional_analysis_payload(
             requested_symbol,
             timeframe,
             asset_type,
             int(request.args.get("limit", 320)),
+            operational_mode,
         )
         flow_ai = FlowInstitucionalIA(
             asset=requested_symbol,
@@ -1251,6 +1271,7 @@ def api_flow_analysis():
             candles_by_timeframe=payload.get("candlesByTimeframe"),
             news=payload.get("news"),
             risk_status={"allowed": True, "rejections": []},
+            operational_mode=operational_mode,
         )
         flow_ai.analysis = payload["institutional"]
         flow_ai._sync_state(payload["institutional"])
@@ -1280,6 +1301,7 @@ def api_flow_analysis():
             "symbol": requested_symbol,
             "timeframe": timeframe,
             "assetType": asset_type,
+            "operationalMode": operational_mode,
             "institutional": {},
             "analysis": {},
             "signal": {},

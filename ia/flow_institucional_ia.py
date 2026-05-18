@@ -33,10 +33,12 @@ class FlowInstitucionalIA:
         candles_by_timeframe: dict[str, Any] | None = None,
         news: dict[str, Any] | None = None,
         risk_status: dict[str, Any] | None = None,
+        operational_mode: str = "moderado",
     ) -> None:
         self.asset = asset
         self.timeframe = timeframe
         self.asset_type = asset_type
+        self.operational_mode = operational_mode
         self.candles_by_timeframe = candles_by_timeframe or {}
         self.news = news
         self.risk_status = risk_status
@@ -62,6 +64,7 @@ class FlowInstitucionalIA:
             candles_by_timeframe=candles_by_timeframe,
             news=self.news,
             risk_status=self.risk_status,
+            operational_mode=self.operational_mode,
         )
         self._attach_order_flow_context(df)
         self._attach_multi_timeframe_context(candles_by_timeframe)
