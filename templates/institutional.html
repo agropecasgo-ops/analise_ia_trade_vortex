@@ -2,6 +2,31 @@
 
 {% block title %}An&aacute;lise IA Institucional - FinanceAI{% endblock %}
 
+{% block extra_css %}
+<style>
+    .institutional-shell .institutional-desk-controls {
+        grid-template-columns:
+            minmax(150px, 0.75fr)
+            minmax(240px, 1.25fr)
+            minmax(130px, 0.55fr)
+            minmax(190px, 0.8fr)
+            repeat(3, minmax(160px, auto));
+    }
+
+    @media (max-width: 1380px) {
+        .institutional-shell .institutional-desk-controls {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 680px) {
+        .institutional-shell .institutional-desk-controls {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="institutional-shell">
     <section class="institutional-header">
@@ -17,7 +42,7 @@
         </div>
     </section>
 
-    <section class="institutional-controls">
+    <section class="institutional-controls institutional-desk-controls">
         <div class="institutional-field">
             <label for="institutionalAssetType">Tipo de ativo</label>
             <select id="institutionalAssetType" class="institutional-input">
@@ -48,7 +73,7 @@
             </select>
         </div>
         <div class="institutional-field">
-            <label for="institutionalOperationalMode">Nível operacional</label>
+            <label for="institutionalOperationalMode">Nivel operacional</label>
             <select id="institutionalOperationalMode" class="institutional-input">
                 <option value="conservador">Conservador</option>
                 <option value="moderado" selected>Moderado</option>
@@ -229,6 +254,6 @@
 <script src="{{ url_for('static', filename='js/lightweight-charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>
 <script src="{{ url_for('static', filename='js/market-data-engine.js') }}"></script>
-<script src="{{ url_for('static', filename='js/institutional-desk.js') }}"></script>
+<script src="{{ url_for('static', filename='js/institutional-desk.js') }}?v=20260518-ops-mode"></script>
 <script src="{{ url_for('static', filename='js/replay-engine.js') }}"></script>
 {% endblock %}

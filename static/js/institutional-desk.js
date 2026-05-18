@@ -4,7 +4,7 @@
             this.assetType = 'crypto';
             this.asset = 'BTCUSDT';
             this.timeframe = '15m';
-            this.operationalMode = 'moderado';
+            this.operationalMode = localStorage.getItem('financeai.institutional.operationalMode') || 'moderado';
             this.chartEngine = null;
             this.marketData = new window.MarketDataEngine({ provider: 'institutional', ttl: 6000 });
             this.analysisController = null;
@@ -17,6 +17,10 @@
         async init() {
             this.setupChart();
             this.bindEvents();
+            const modeSelect = document.getElementById('institutionalOperationalMode');
+            if (modeSelect && [...modeSelect.options].some((option) => option.value === this.operationalMode)) {
+                modeSelect.value = this.operationalMode;
+            }
             await this.loadAssets();
             await this.generate(true);
         }
@@ -46,6 +50,7 @@
             });
             document.getElementById('institutionalOperationalMode')?.addEventListener('change', (event) => {
                 this.operationalMode = event.target.value;
+                localStorage.setItem('financeai.institutional.operationalMode', this.operationalMode);
             });
             document.getElementById('institutionalGenerate')?.addEventListener('click', () => this.generate(true));
             document.getElementById('institutionalFitChart')?.addEventListener('click', () => this.chartEngine?.fit?.());
