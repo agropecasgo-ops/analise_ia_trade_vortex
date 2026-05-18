@@ -13,10 +13,14 @@ from typing import Any
 import pandas as pd
 
 try:
+    from .ai_narrative_engine import build_institutional_ai_narrative
     from .institutional_unified_engine import build_institutional_unified_analysis
+    from .multi_timeframe_context import build_multi_timeframe_context
     from .order_flow_engine import build_order_flow_context
 except ImportError:  # Allows direct execution/import from inside the ia folder.
+    from ai_narrative_engine import build_institutional_ai_narrative
     from institutional_unified_engine import build_institutional_unified_analysis
+    from multi_timeframe_context import build_multi_timeframe_context
     from order_flow_engine import build_order_flow_context
 
 
@@ -60,6 +64,8 @@ class FlowInstitucionalIA:
             risk_status=self.risk_status,
         )
         self._attach_order_flow_context(df)
+        self._attach_multi_timeframe_context(candles_by_timeframe)
+        self._attach_ai_narrative_context()
 
         self._sync_state(self.analysis)
         return self.analysis
@@ -111,6 +117,20 @@ class FlowInstitucionalIA:
         self.analysis["orderFlowContext"] = order_flow
         behavior = self.analysis.setdefault("institutionalBehavior", {})
         behavior["orderFlowContext"] = order_flow
+
+    def _attach_multi_timeframe_context(self, candles_by_timeframe: dict[str, pd.DataFrame]) -> None:
+        self.analysis["multiTimeframeContext"] = build_multi_timeframe_context(candles_by_timeframe)
+
+    def _attach_ai_narrative_context(self) -> None:
+        behavior = self.analysis.get("institutionalBehavior") or {}
+        self.analysis["aiNarrativeContext"] = build_institutional_ai_narrative(
+            fluxo=behavior.get("flow"),
+            liquidez=self.analysis.get("liquidity"),
+            estrutura=self.analysis.get("marketStructure"),
+            multi_timeframe=self.analysis.get("multiTimeframeContext"),
+            orderflow=self.analysis.get("orderFlowContext"),
+            contexto_macro=self.analysis.get("macroContext"),
+        )
 
     def _build_timeframe_map(self, candles: Any, df: pd.DataFrame) -> dict[str, pd.DataFrame]:
         frames = {

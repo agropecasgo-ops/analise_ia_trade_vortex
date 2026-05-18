@@ -73,7 +73,10 @@
     .flow-panel,
     .flow-score-card,
     .flow-strength-card,
+    .flow-chart-card,
     .flow-order-card,
+    .flow-mtf-card,
+    .flow-ai-narrative-card,
     .flow-trade-card {
         min-width: 0;
         border: 1px solid var(--flow-line);
@@ -247,7 +250,10 @@
     .flow-panel,
     .flow-score-card,
     .flow-strength-card,
+    .flow-chart-card,
     .flow-order-card,
+    .flow-mtf-card,
+    .flow-ai-narrative-card,
     .flow-trade-card {
         padding: 18px;
     }
@@ -258,6 +264,81 @@
         justify-content: space-between;
         gap: 12px;
         margin-bottom: 14px;
+    }
+
+    .flow-chart-card {
+        margin-top: 16px;
+        overflow: hidden;
+    }
+
+    .flow-chart-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
+    .flow-chart-state {
+        color: var(--flow-muted);
+        font-size: 0.76rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .flow-chart-fit {
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(191, 244, 241, 0.13);
+        border-radius: 10px;
+        color: var(--flow-cyan);
+        background: rgba(5, 10, 12, 0.64);
+    }
+
+    .flow-chart-fit:hover {
+        border-color: rgba(120, 217, 209, 0.34);
+        background: rgba(20, 38, 44, 0.88);
+    }
+
+    .flow-institutional-chart {
+        width: 100%;
+        height: clamp(420px, 54vh, 640px);
+        min-height: 420px;
+        border: 1px solid rgba(191, 244, 241, 0.10);
+        border-radius: 12px;
+        background: #030712;
+    }
+
+    .flow-chart-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .flow-chart-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 30px;
+        padding: 6px 10px;
+        border: 1px solid rgba(191, 244, 241, 0.10);
+        border-radius: 999px;
+        color: #dffafa;
+        background: rgba(5, 10, 12, 0.58);
+        font-size: 0.74rem;
+        font-weight: 850;
+        text-transform: uppercase;
+    }
+
+    .flow-chart-legend i {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--legend-color, var(--flow-cyan));
+        box-shadow: 0 0 14px color-mix(in srgb, var(--legend-color, var(--flow-cyan)) 56%, transparent);
     }
 
     .flow-panel-title strong {
@@ -290,6 +371,9 @@
     .flow-trade-item,
     .flow-order-kpi,
     .flow-order-alert,
+    .flow-mtf-item,
+    .flow-mtf-kpi,
+    .flow-ai-narrative-kpi,
     .flow-mini-kpi {
         min-width: 0;
         padding: 13px;
@@ -303,6 +387,9 @@
     .flow-trade-item span,
     .flow-order-kpi span,
     .flow-order-alert span,
+    .flow-mtf-item span,
+    .flow-mtf-kpi span,
+    .flow-ai-narrative-kpi span,
     .flow-mini-kpi span {
         display: block;
         color: var(--flow-muted);
@@ -316,6 +403,9 @@
     .flow-trade-item strong,
     .flow-order-kpi strong,
     .flow-order-alert strong,
+    .flow-mtf-item strong,
+    .flow-mtf-kpi strong,
+    .flow-ai-narrative-kpi strong,
     .flow-mini-kpi strong {
         display: block;
         margin-top: 7px;
@@ -326,6 +416,17 @@
 
     .flow-order-card {
         margin-top: 16px;
+    }
+
+    .flow-mtf-card {
+        margin-top: 16px;
+    }
+
+    .flow-ai-narrative-card {
+        margin-top: 16px;
+        background:
+            linear-gradient(145deg, rgba(12, 23, 28, 0.94), rgba(3, 7, 9, 0.90)),
+            radial-gradient(circle at 15% 0%, rgba(120, 217, 209, 0.14), transparent 42%);
     }
 
     .flow-order-layout {
@@ -352,6 +453,49 @@
     .flow-order-alert[data-active="true"] {
         border-color: rgba(246, 213, 139, 0.34);
         background: linear-gradient(145deg, rgba(88, 69, 22, 0.38), rgba(4, 8, 10, 0.82));
+    }
+
+    .flow-mtf-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .flow-mtf-item {
+        min-height: 104px;
+    }
+
+    .flow-mtf-item small {
+        display: block;
+        margin-top: 8px;
+        color: #8fa8af;
+        line-height: 1.35;
+    }
+
+    .flow-mtf-footer {
+        display: grid;
+        grid-template-columns: 180px minmax(180px, 0.85fr) minmax(0, 1.5fr);
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .flow-ai-narrative-main {
+        padding: 18px;
+        border: 1px solid rgba(120, 217, 209, 0.20);
+        border-radius: 12px;
+        color: #eefdfc;
+        line-height: 1.68;
+        background:
+            linear-gradient(135deg, rgba(31, 111, 120, 0.20), rgba(5, 10, 12, 0.84)),
+            radial-gradient(circle at 100% 0%, rgba(246, 213, 139, 0.10), transparent 40%);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .flow-ai-narrative-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 10px;
     }
 
     .flow-side-stack {
@@ -513,8 +657,16 @@
         .flow-trade-grid,
         .flow-order-layout,
         .flow-order-kpis,
-        .flow-order-alerts {
+        .flow-order-alerts,
+        .flow-mtf-grid,
+        .flow-mtf-footer,
+        .flow-ai-narrative-grid {
             grid-template-columns: 1fr;
+        }
+
+        .flow-institutional-chart {
+            height: 380px;
+            min-height: 380px;
         }
     }
 </style>
@@ -639,6 +791,32 @@
         </div>
     </div>
 
+    <section class="flow-chart-card">
+        <div class="flow-panel-title">
+            <div>
+                <span class="flow-label">Mapa grafico institucional</span>
+                <strong>BOS, CHOCH, FVG, liquidez, sweep e plano</strong>
+            </div>
+            <div class="flow-chart-actions">
+                <span class="flow-chart-state" id="flowOverlayState">Aguardando candles</span>
+                <button class="flow-chart-fit" id="flowChartFit" type="button" aria-label="Ajustar grafico" title="Ajustar grafico">
+                    <i class="fas fa-expand"></i>
+                </button>
+            </div>
+        </div>
+        <div class="flow-institutional-chart" id="flowInstitutionalChart"></div>
+        <div class="flow-chart-legend" aria-label="Overlays institucionais">
+            <span><i style="--legend-color:#38bdf8"></i>BOS</span>
+            <span><i style="--legend-color:#a78bfa"></i>CHOCH</span>
+            <span><i style="--legend-color:#f6d58b"></i>FVG</span>
+            <span><i style="--legend-color:#22c55e"></i>Liquidity Zones</span>
+            <span><i style="--legend-color:#f59e0b"></i>Sweep</span>
+            <span><i style="--legend-color:#60a5fa"></i>Entrada</span>
+            <span><i style="--legend-color:#f87171"></i>Stop</span>
+            <span><i style="--legend-color:#34d399"></i>Targets</span>
+        </div>
+    </section>
+
     <section class="flow-order-card">
         <div class="flow-panel-title">
             <div>
@@ -675,6 +853,62 @@
         </div>
     </section>
 
+    <section class="flow-mtf-card">
+        <div class="flow-panel-title">
+            <div>
+                <span class="flow-label">MultiTimeframe Context</span>
+                <strong>H1 macro, M15 direcao, M5 confirmacao, M1 refino</strong>
+            </div>
+        </div>
+        <div class="flow-mtf-grid">
+            <div class="flow-mtf-item">
+                <span>H1 contexto macro</span>
+                <strong id="mtfH1Direction">--</strong>
+                <small id="mtfH1Reason">Aguardando contexto.</small>
+            </div>
+            <div class="flow-mtf-item">
+                <span>M15 direcao principal</span>
+                <strong id="mtfM15Direction">--</strong>
+                <small id="mtfM15Reason">Aguardando direcao.</small>
+            </div>
+            <div class="flow-mtf-item">
+                <span>M5 confirmacao</span>
+                <strong id="mtfM5Direction">--</strong>
+                <small id="mtfConfirmationStatus">--</small>
+            </div>
+            <div class="flow-mtf-item">
+                <span>M1 entrada/refino</span>
+                <strong id="mtfM1Direction">--</strong>
+                <small id="mtfEntryBias">--</small>
+            </div>
+        </div>
+        <div class="flow-mtf-footer">
+            <div class="flow-mtf-kpi"><span>Alignment score</span><strong id="mtfAlignmentScore">--</strong></div>
+            <div class="flow-mtf-kpi"><span>Conflitos</span><strong id="mtfConflicts">--</strong></div>
+            <div class="flow-mtf-kpi"><span>Resumo</span><strong id="mtfSummary">--</strong></div>
+        </div>
+    </section>
+
+    <section class="flow-ai-narrative-card">
+        <div class="flow-panel-title">
+            <div>
+                <span class="flow-label">Narrativa Institucional IA</span>
+                <strong>Leitura premium da mesa</strong>
+            </div>
+        </div>
+        <div class="flow-ai-narrative-main" id="aiNarrativeMain">
+            Aguardando narrativa institucional consolidada.
+        </div>
+        <div class="flow-ai-narrative-grid">
+            <div class="flow-ai-narrative-kpi"><span>Institutional bias</span><strong id="aiNarrativeBias">--</strong></div>
+            <div class="flow-ai-narrative-kpi"><span>Risk context</span><strong id="aiNarrativeRisk">--</strong></div>
+            <div class="flow-ai-narrative-kpi"><span>Execution quality</span><strong id="aiNarrativeExecution">--</strong></div>
+            <div class="flow-ai-narrative-kpi"><span>Wait or trade</span><strong id="aiNarrativeWaitTrade">--</strong></div>
+            <div class="flow-ai-narrative-kpi"><span>Invalidation</span><strong id="aiNarrativeInvalidation">--</strong></div>
+            <div class="flow-ai-narrative-kpi"><span>Contexto</span><strong id="aiNarrativeContextState">AUXILIAR</strong></div>
+        </div>
+    </section>
+
     <section class="flow-trade-card">
         <div class="flow-panel-title">
             <div>
@@ -695,9 +929,12 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/lightweight-charts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>
 <script>
 (() => {
     const $ = (id) => document.getElementById(id);
+    let flowChartEngine = null;
     const normalize = (value) => window.FinanceText?.normalize ? window.FinanceText.normalize(value) : value;
     const clamp = (value) => Math.max(0, Math.min(100, Number(value) || 0));
     const text = (id, value) => {
@@ -829,6 +1066,259 @@
         $("orderFlowExhaustionCard")?.setAttribute("data-active", String(Boolean(exhaustion.detected)));
     }
 
+    function mtfDirectionText(frame) {
+        if (!frame) return "--";
+        const strength = Number(frame.strength || 0);
+        return `${frame.direction || "NEUTRAL"}${strength ? ` - ${Math.round(strength)}%` : ""}`;
+    }
+
+    function mtfConflictsText(items) {
+        if (!Array.isArray(items) || !items.length) return "SEM CONFLITO";
+        return items.map((item) => `${item.timeframe || "--"} ${item.direction || "--"}`).join(", ");
+    }
+
+    function renderMultiTimeframe(analysis) {
+        const context = analysis.multiTimeframeContext || {};
+        const frames = context.timeframes || {};
+        const h1 = context.macro_trend || frames["1h"] || {};
+        const m15 = frames["15m"] || {};
+        const m5 = frames["5m"] || {};
+        const m1 = frames["1m"] || {};
+        const conflicts = context.conflicting_timeframes || [];
+
+        text("mtfH1Direction", mtfDirectionText(h1));
+        text("mtfH1Reason", h1.reason || "--");
+        text("mtfM15Direction", context.main_direction || m15.direction || "--");
+        text("mtfM15Reason", m15.reason || "--");
+        text("mtfM5Direction", mtfDirectionText(m5));
+        text("mtfConfirmationStatus", context.confirmation_status || "--");
+        text("mtfM1Direction", mtfDirectionText(m1));
+        text("mtfEntryBias", context.entry_bias || "--");
+        text("mtfAlignmentScore", Number.isFinite(Number(context.alignment_score)) ? `${Math.round(clamp(context.alignment_score))}%` : "--");
+        text("mtfConflicts", mtfConflictsText(conflicts));
+        text("mtfSummary", context.summary || "--");
+    }
+
+    function contextList(value) {
+        if (!value) return "--";
+        if (Array.isArray(value)) {
+            if (!value.length) return "SEM ALERTAS";
+            return value.map((item) => compact(item)).join(", ");
+        }
+        return compact(value);
+    }
+
+    function renderAiNarrative(analysis) {
+        const context = analysis.aiNarrativeContext || {};
+        const risk = context.risk_context || {};
+        const execution = context.execution_quality || {};
+        const invalidation = context.invalidation_context || {};
+
+        text("aiNarrativeMain", context.narrative || "Narrativa institucional ainda indisponivel para esta leitura.");
+        text("aiNarrativeBias", context.institutional_bias || "--");
+        text("aiNarrativeRisk", risk.level ? `${risk.level}${risk.factors?.length ? ` - ${contextList(risk.factors)}` : ""}` : "--");
+        text("aiNarrativeExecution", execution.quality ? `${execution.quality} ${Number.isFinite(Number(execution.score)) ? Math.round(execution.score) + "%" : ""}` : "--");
+        text("aiNarrativeWaitTrade", context.wait_or_trade || "--");
+        text("aiNarrativeInvalidation", invalidation.summary || contextList(invalidation.items));
+        text("aiNarrativeContextState", context.can_generate_signal === false ? "AUXILIAR" : "CONTEXTUAL");
+    }
+
+    function ensureFlowChart() {
+        if (flowChartEngine) return flowChartEngine;
+        if (!window.LiveChartEngine || !window.LightweightCharts) {
+            text("flowOverlayState", "GRAFICO INDISPONIVEL");
+            return null;
+        }
+        flowChartEngine = new window.LiveChartEngine("flowInstitutionalChart", {
+            minHeight: 420,
+            backgroundColor: "#030712",
+            watermark: {
+                visible: true,
+                text: "FinanceAI Institutional Flow",
+                color: "rgba(120, 217, 209, 0.10)",
+                fontSize: 22,
+            },
+        }).init();
+        window.addEventListener("resize", () => flowChartEngine?.resize?.());
+        return flowChartEngine;
+    }
+
+    function firstFinite(...values) {
+        for (const value of values.flat()) {
+            const number = Number(value);
+            if (Number.isFinite(number) && number !== 0) return number;
+        }
+        return null;
+    }
+
+    function asArray(value) {
+        if (!value) return [];
+        return Array.isArray(value) ? value : [value];
+    }
+
+    function lastChartTime(candles) {
+        const last = Array.isArray(candles) ? candles[candles.length - 1] : null;
+        return last?.time ?? last?.timestamp ?? last?.date ?? last?.datetime;
+    }
+
+    function buildOverlayLevels(analysis) {
+        const structure = analysis.marketStructure || {};
+        const liquidity = analysis.liquidity || {};
+        const plan = analysis.tradePlan || {};
+        const bos = structure.bos || structure.breakOfStructure || structure.break_of_structure || {};
+        const choch = structure.choch || structure.changeOfCharacter || structure.change_of_character || {};
+        const sweep = liquidity.sweep || structure.sweep || {};
+        const levels = [
+            { label: "BOS", price: firstFinite(bos.level, bos.price, bos.breakLevel, structure.bosLevel), color: "#38bdf8", lineWidth: 2 },
+            { label: "CHOCH", price: firstFinite(choch.level, choch.price, choch.changeLevel, structure.chochLevel), color: "#a78bfa", lineWidth: 2 },
+            { label: "SWEEP", price: firstFinite(sweep.level, sweep.price, sweep.mid), color: "#f59e0b", lineWidth: 2 },
+            { label: "ENTRADA", price: firstFinite(plan.entry, plan.entryPrice, plan.entry_price), color: "#60a5fa", lineWidth: 2 },
+            { label: "STOP", price: firstFinite(plan.stopLoss, plan.stop, plan.invalidPrice), color: "#f87171", lineWidth: 2 },
+            { label: "TARGET 1", price: firstFinite(plan.takeProfit1, plan.tp1, plan.target1), color: "#34d399", lineWidth: 2 },
+            { label: "TARGET 2", price: firstFinite(plan.takeProfit2, plan.tp2, plan.target2), color: "#22c55e", lineWidth: 2 },
+            { label: "TARGET FINAL", price: firstFinite(plan.takeProfitFinal, plan.takeProfit3, plan.tp3, plan.targetFinal), color: "#f6d58b", lineWidth: 2 },
+        ];
+        return levels.filter((item) => Number.isFinite(Number(item.price)));
+    }
+
+    function zoneFromPrice(label, price, color, referencePrice) {
+        const center = Number(price);
+        if (!Number.isFinite(center)) return null;
+        const base = Number(referencePrice) || center;
+        const band = Math.max(Math.abs(base) * 0.0007, 0.000001);
+        return {
+            label,
+            type: label.toLowerCase(),
+            low: center - band,
+            high: center + band,
+            color,
+            opacity: 0.2,
+            active: true,
+        };
+    }
+
+    function buildOverlayZones(analysis, candles) {
+        const structure = analysis.marketStructure || {};
+        const liquidity = analysis.liquidity || {};
+        const lastClose = firstFinite(candles?.at?.(-1)?.close, candles?.at?.(-1)?.c);
+        const zones = [];
+        const fvgItems = [
+            ...asArray(structure.fvg),
+            ...asArray(structure.fairValueGap),
+            ...asArray(structure.fair_value_gap),
+        ];
+
+        fvgItems.forEach((zone) => {
+            if (!zone || zone.detected === false) return;
+            const low = firstFinite(zone.low, zone.bottom, zone.from);
+            const high = firstFinite(zone.high, zone.top, zone.to);
+            if (!Number.isFinite(low) || !Number.isFinite(high) || low === high) return;
+            zones.push({
+                label: "FVG",
+                type: zone.direction || zone.side || "fair-value-gap",
+                low: Math.min(low, high),
+                high: Math.max(low, high),
+                color: "#f6d58b",
+                opacity: 0.18,
+                active: true,
+            });
+        });
+
+        [
+            ...asArray(liquidity.zones),
+            ...asArray(liquidity.nearest),
+            ...asArray(liquidity.internal),
+            ...asArray(liquidity.external),
+        ].forEach((zone, index) => {
+            if (!zone) return;
+            const low = firstFinite(zone.low, zone.bottom);
+            const high = firstFinite(zone.high, zone.top);
+            if (Number.isFinite(low) && Number.isFinite(high) && low !== high) {
+                zones.push({
+                    label: zone.label || `LIQ ${index + 1}`,
+                    type: zone.side || zone.type || "liquidity",
+                    low: Math.min(low, high),
+                    high: Math.max(low, high),
+                    color: "#22c55e",
+                    opacity: 0.18,
+                    active: true,
+                });
+                return;
+            }
+            const priceLevel = firstFinite(zone.price, zone.level, zone.mid);
+            const mapped = zoneFromPrice(zone.label || `LIQ ${index + 1}`, priceLevel, "#22c55e", lastClose);
+            if (mapped) zones.push(mapped);
+        });
+
+        const sweep = liquidity.sweep || {};
+        if (sweep.detected) {
+            const mapped = zoneFromPrice("SWEEP", firstFinite(sweep.level, sweep.price), "#f59e0b", lastClose);
+            if (mapped) zones.push(mapped);
+        }
+
+        return zones.slice(0, 14);
+    }
+
+    function buildOverlayMarkers(candles, analysis) {
+        const time = lastChartTime(candles);
+        if (!time) return [];
+        const structure = analysis.marketStructure || {};
+        const liquidity = analysis.liquidity || {};
+        const plan = analysis.tradePlan || {};
+        const direction = String(analysis.direction || "NEUTRAL").toUpperCase();
+        const markers = [];
+        const add = (textValue, priceValue, color, position, shape = "circle") => {
+            const marker = { time, text: textValue, color, position, shape };
+            const numericPrice = Number(priceValue);
+            if (Number.isFinite(numericPrice)) marker.price = numericPrice;
+            markers.push(marker);
+        };
+
+        if (structure.bos?.detected || structure.bos || structure.breakOfStructure) {
+            add("BOS", firstFinite(structure.bos?.level, structure.bos?.price, structure.bosLevel), "#38bdf8", direction === "SELL" ? "aboveBar" : "belowBar");
+        }
+        if (structure.choch?.detected || structure.choch || structure.changeOfCharacter) {
+            add("CHOCH", firstFinite(structure.choch?.level, structure.choch?.price, structure.chochLevel), "#a78bfa", "aboveBar");
+        }
+        if (liquidity.sweep?.detected) {
+            add("SWEEP", firstFinite(liquidity.sweep.level, liquidity.sweep.price), "#f59e0b", "aboveBar");
+        }
+        const entry = firstFinite(plan.entry, plan.entryPrice);
+        const stop = firstFinite(plan.stopLoss, plan.stop);
+        const target = firstFinite(plan.takeProfit1, plan.tp1, plan.target1);
+        if (Number.isFinite(entry)) add("Entrada", entry, "#60a5fa", "atPriceMiddle");
+        if (Number.isFinite(stop)) add("Stop", stop, "#f87171", "atPriceMiddle");
+        if (Number.isFinite(target)) add("Target", target, "#34d399", "atPriceMiddle");
+
+        return markers.filter((item) => item.text);
+    }
+
+    async function renderFlowChart(symbol, timeframe, analysis) {
+        const chart = ensureFlowChart();
+        if (!chart) return;
+        try {
+            text("flowOverlayState", "CARREGANDO CANDLES");
+            const response = await fetch(`/api/candles/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}?limit=260&assetType=crypto`);
+            const payload = await response.json();
+            const candles = payload.candles || [];
+            const volumes = payload.volumes || [];
+            if (!Array.isArray(candles) || !candles.length) {
+                text("flowOverlayState", "SEM CANDLES");
+                chart.clearOverlays?.();
+                return;
+            }
+            chart.setData(candles, volumes, true);
+            chart.setIndicators?.(payload.overlays || {});
+            chart.clearOverlays?.();
+            chart.applyLevels?.(buildOverlayLevels(analysis));
+            chart.applyZones?.(buildOverlayZones(analysis, candles));
+            chart.applyMarkers?.(buildOverlayMarkers(candles, analysis));
+            text("flowOverlayState", "OVERLAYS CONTEXTUAIS");
+        } catch (error) {
+            text("flowOverlayState", "FALHA NO GRAFICO");
+        }
+    }
+
     async function loadFlow() {
         const symbol = $("flowAsset").value;
         const timeframe = $("flowTimeframe").value;
@@ -877,6 +1367,9 @@
             $("flowNarrative").textContent = normalize(analysis.aiExplanation || data.aiNarrative?.summary || "Leitura concluída.");
             renderBehavior(analysis);
             renderOrderFlow(analysis);
+            renderMultiTimeframe(analysis);
+            renderAiNarrative(analysis);
+            renderFlowChart(symbol, timeframe, analysis);
         } catch (error) {
             $("flowStateDot")?.classList.add("error");
             text("flowDeskState", "ERRO");
@@ -884,6 +1377,8 @@
             text("flowDirection", "SEM CONFLUENCIA");
             $("flowDecisionCard")?.setAttribute("data-tone", "blocked");
             renderOrderFlow({});
+            renderMultiTimeframe({});
+            renderAiNarrative({});
         } finally {
             runButton?.classList.remove("loading");
         }
@@ -892,6 +1387,7 @@
     $("flowGenerate")?.addEventListener("click", loadFlow);
     $("flowAsset")?.addEventListener("change", loadFlow);
     $("flowTimeframe")?.addEventListener("change", loadFlow);
+    $("flowChartFit")?.addEventListener("click", () => flowChartEngine?.fit?.());
     loadFlow();
 })();
 </script>
