@@ -9,6 +9,11 @@
         controller: null,
         assetsByMarket: {},
         liveTimer: null,
+        websocketEngine: window.WebSocketEngine ? new window.WebSocketEngine({ provider: 'binance' }) : null,
+        marketDataEngine: window.MarketDataEngine ? new window.MarketDataEngine({ provider: 'binance', ttl: 8000 }) : null,
+        streaming: true,
+        tickPollTimer: null,
+        lastTickVolumes: {},
     };
 
     const $ = (id) => document.getElementById(id);
@@ -91,6 +96,7 @@
         state.controller = new AbortController();
         state.symbol = $('operacionalAsset')?.value || state.symbol;
         state.timeframe = $('operacionalTimeframe')?.value || state.timeframe;
+        disconnectStreams();
         setLoading();
         try {
             const [candlesResponse, analysisResponse] = await Promise.all([
@@ -99,10 +105,12 @@
             ]);
             const candlesData = await candlesResponse.json();
             const analysis = await analysisResponse.json();
+            state.streaming = candlesData.streaming ?? String(state.symbol).endsWith('USDT');
             renderChart(candlesData);
             renderAnalysis(analysis, candlesData);
             refreshLive();
             scheduleLive();
+            connectStreams();
         } catch (error) {
             if (error.name !== 'AbortError') {
                 renderError(error);
@@ -355,6 +363,131 @@
     function scheduleLive() {
         clearInterval(state.liveTimer);
         state.liveTimer = setInterval(refreshLive, 12000);
+    }
+
+    function disconnectStreams() {
+        state.websocketEngine?.close();
+        clearTimeout(state.tickPollTimer);
+    }
+
+    function connectStreams() {
+        disconnectStreams();
+        if (!state.streaming) {
+            setConnection('REST / historico');
+            console.log('[Operacional] Ativo sem streaming, usando REST.');
+            return;
+        }
+        if (!String(state.symbol).endsWith('USDT')) {
+            startTickPolling();
+            console.log('[Operacional] Ativo nao-USDT, usando tick polling.');
+            return;
+        }
+        if (!state.websocketEngine) {
+            console.warn('[Operacional] WebSocketEngine nao disponivel.');
+            return;
+        }
+        console.log(`[Operacional] Conectando WebSocket: ${state.symbol} ${state.timeframe}`);
+        state.websocketEngine.connectKline({
+            symbol: state.symbol,
+            timeframe: state.timeframe,
+            includeTrades: true,
+            onState: (s) => setConnection(s),
+            onKline: (kline) => {
+                const candle = kline.candle;
+                const volume = kline.volume;
+                if (!state.chartEngine?.update(candle, volume)) return;
+                setText('opLivePrice', formatPrice(candle.close));
+                if (kline.isClosed) {
+                    console.log('[Operacional] Candle fechado, re-analisando.');
+                    refreshLive();
+                }
+            },
+        });
+    }
+
+    function startTickPolling() {
+        clearTimeout(state.tickPollTimer);
+        setConnection('Tick tempo real');
+        const poll = async () => {
+            try {
+                const response = await fetch(`/api/market/tick/${encodeURIComponent(state.symbol)}?refresh=${Date.now()}`);
+                const tick = await response.json();
+                if (tick?.success) {
+                    applyRealtimeTick(tick);
+                    setConnection(`${String(tick.source || 'tick').toUpperCase()} tempo real`);
+                } else {
+                    setConnection('Tick indisponivel');
+                }
+            } catch (error) {
+                setConnection('Polling REST');
+            } finally {
+                state.tickPollTimer = setTimeout(poll, document.hidden ? 5000 : 1000);
+            }
+        };
+        poll();
+    }
+
+    function applyRealtimeTick(tick) {
+        const price = Number(tick.last ?? tick.lastPrice ?? tick.bid ?? tick.ask);
+        if (!Number.isFinite(price) || price <= 0) return;
+        const time = Number(tick.time) > 0 ? Number(tick.time) : Math.floor(Date.now() / 1000);
+        const candleTime = bucketTime(time, state.timeframe);
+        const lastCandles = state.chartEngine?.lastCandles || [];
+        const previous = lastCandles[lastCandles.length - 1];
+        const sameCandle = previous && Number(previous.time) === candleTime;
+        const candle = {
+            time: candleTime,
+            open: sameCandle ? Number(previous.open) : price,
+            high: sameCandle ? Math.max(Number(previous.high), price) : price,
+            low: sameCandle ? Math.min(Number(previous.low), price) : price,
+            close: price,
+        };
+        const volume = {
+            time: candle.time,
+            value: Number(tick.volume ?? previous?.volume ?? 0) || 0,
+            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
+        };
+        if (!state.chartEngine?.update(candle, volume)) return;
+        setText('opLivePrice', formatPrice(price));
+    }
+
+    function bucketTime(timestamp, timeframe) {
+        const seconds = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400, '1w': 604800 }[timeframe] || 60;
+        return Math.floor(Number(timestamp) / seconds) * seconds;
+    }
+
+    function setConnection(value) {
+        setText('opConnectionStatus', value);
+        updateRealtimeBadge(value);
+    }
+
+    function updateRealtimeBadge(rawState) {
+        const status = realtimeBadgeStatus(rawState);
+        let badge = document.getElementById('realtimeStatusBadge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'realtimeStatusBadge';
+            badge.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;padding:6px 10px;border-radius:999px;font:600 11px Inter,Arial,sans-serif;letter-spacing:0;background:rgba(3,7,18,.86);border:1px solid rgba(148,163,184,.24);box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:none;';
+            document.body.appendChild(badge);
+        }
+        badge.textContent = status.label;
+        badge.style.color = status.color;
+        badge.style.borderColor = status.border;
+    }
+
+    function realtimeBadgeStatus(rawState) {
+        const status = String(rawState || '').toLowerCase();
+        const wsActive = state.websocketEngine?.socket?.readyState === WebSocket.OPEN;
+        if (status.includes('rest') || status.includes('tick') || status.includes('polling') || status.includes('historico') || status.includes('indisponivel')) {
+            return { label: 'Fallback REST/Tick', color: '#facc15', border: 'rgba(250,204,21,.36)' };
+        }
+        if (status.includes('reconect') || status.includes('falh') || status.includes('atualizando') || status.includes('carregando')) {
+            return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
+        }
+        if (wsActive || status.includes('websocket') || status.includes('bybit')) {
+            return { label: 'Realtime ativo', color: '#22c55e', border: 'rgba(34,197,94,.38)' };
+        }
+        return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
     }
 
     function renderZoneLines(markLines, zones, candles) {

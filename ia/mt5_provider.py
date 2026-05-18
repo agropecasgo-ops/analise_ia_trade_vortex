@@ -34,6 +34,7 @@ class MT5Provider:
         "WDO": ["WDO$N", "WDO$", "WDO1!", "WDO1", "WDO"],
         "WDO1!": ["WDO$N", "WDO$", "WDO1!", "WDO1", "WDO"],
         "WDO1": ["WDO$N", "WDO$", "WDO1!", "WDO1", "WDO"],
+        "USDBRL": ["USDBRL", "USD BRL", "USD/BRL", "DOLAR", "DOL"],
         "GOLD": ["XAUUSD", "GOLD"],
         "XAUUSD": ["XAUUSD", "GOLD"],
         "WTI": ["WTI", "USOIL", "XTIUSD", "CL"],

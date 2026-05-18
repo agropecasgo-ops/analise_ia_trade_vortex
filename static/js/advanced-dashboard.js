@@ -31,6 +31,8 @@ class AdvancedDashboard {
         this.analysisMemoryCache = new Map();
         this.latestStreaming = true;
         this.realtimeAnalysisTimer = null;
+        this.tickPollTimer = null;
+        this.lastTickPollAt = 0;
         this.init();
     }
 
@@ -133,7 +135,19 @@ class AdvancedDashboard {
 
     startRealtime() {
         clearInterval(this.refreshTimer);
-        this.refreshTimer = setInterval(() => this.updateDashboard(false), this.refreshMs);
+        this.refreshTimer = setInterval(() => {
+            if (this.hasPrimaryWebSocket()) return;
+            if (this.latestStreaming === false || String(this.currentAsset).endsWith('USDT')) {
+                this.updateDashboard(false);
+            }
+        }, this.refreshMs);
+    }
+
+    hasPrimaryWebSocket() {
+        return String(this.currentAsset).endsWith('USDT')
+            && this.latestStreaming !== false
+            && this.websocketEngine?.socket
+            && this.websocketEngine.socket.readyState <= WebSocket.OPEN;
     }
 
     async updateDashboard(fit = false) {
@@ -377,10 +391,19 @@ class AdvancedDashboard {
     }
 
     connectMarketStreams() {
-        if (this.latestStreaming === false || !String(this.currentAsset).endsWith('USDT')) {
+        clearTimeout(this.tickPollTimer);
+
+        if (this.latestStreaming === false) {
             this.websocketEngine?.close();
             this.klineSocket = null;
             this.setConnectionState('REST / historico');
+            return;
+        }
+
+        if (!String(this.currentAsset).endsWith('USDT')) {
+            this.websocketEngine?.close();
+            this.klineSocket = null;
+            this.startTickPolling();
             return;
         }
 
@@ -391,25 +414,85 @@ class AdvancedDashboard {
             onState: (state) => this.setConnectionState(state),
             onTrade: (trade) => this.handleTradeStream(trade),
             onKline: (kline) => {
-                const candle = {
-                    time: Math.floor(kline.t / 1000),
-                    open: Number(kline.o),
-                    high: Number(kline.h),
-                    low: Number(kline.l),
-                    close: Number(kline.c),
-                };
-                const volume = {
-                    time: candle.time,
-                    value: Number(kline.v),
-                    color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
-                };
-                this.chartEngine?.update(candle, volume);
+                const candle = kline.candle;
+                const volume = kline.volume;
+                if (!this.chartEngine?.update(candle, volume)) return;
                 this.setText('currentPrice', this.formatPrice(candle.close));
                 this.setText('lastUpdate', new Date().toLocaleTimeString('pt-BR'));
-                if (kline.x) this.scheduleRealtimeAnalysis();
+                if (kline.isClosed) this.scheduleRealtimeAnalysis();
             },
         });
         this.klineSocket = this.websocketEngine?.socket || null;
+    }
+
+    startTickPolling() {
+        clearTimeout(this.tickPollTimer);
+        this.setConnectionState('Tick tempo real');
+        const poll = async () => {
+            try {
+                const tick = await this.marketDataEngine.tick(this.currentAsset, undefined, true);
+                if (tick?.success) {
+                    this.applyRealtimeTick(tick);
+                    this.lastTickPollAt = Date.now();
+                    this.setConnectionState(this.tickConnectionLabel(tick));
+                } else {
+                    this.setConnectionState('Tick indisponivel');
+                    if (tick?.message) this.pushSoftMessage(tick.message);
+                }
+            } catch (error) {
+                this.setConnectionState('Polling REST');
+            } finally {
+                this.tickPollTimer = setTimeout(poll, document.hidden ? 5000 : 1000);
+            }
+        };
+        poll();
+    }
+
+    applyRealtimeTick(tick) {
+        const price = Number(tick.last ?? tick.lastPrice ?? tick.bid ?? tick.ask);
+        if (!Number.isFinite(price) || price <= 0) return;
+        const time = Number(tick.time) > 0 ? Number(tick.time) : Math.floor(Date.now() / 1000);
+        const candleTime = this.bucketTime(time, this.currentTimeframe);
+        const previous = (this.chartEngine?.lastCandles || []).slice(-1)[0];
+        const sameCandle = previous && Number(previous.time) === candleTime;
+        const candle = {
+            time: candleTime,
+            open: sameCandle ? Number(previous.open) : price,
+            high: sameCandle ? Math.max(Number(previous.high), price) : price,
+            low: sameCandle ? Math.min(Number(previous.low), price) : price,
+            close: price,
+            volume: Number(tick.volume ?? previous?.volume ?? 0) || 0,
+        };
+        const volume = {
+            time: candle.time,
+            value: Number(candle.volume) || 0,
+            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
+        };
+        if (!this.chartEngine?.update(candle, volume)) return;
+        this.setText('currentPrice', this.formatPrice(price));
+        this.setText('dataSource', String(tick.source || '--').toUpperCase());
+        this.setText('marketState', this.getMarketStatusText(tick.market_status || 'open'));
+        this.setText('lastUpdate', new Date().toLocaleTimeString('pt-BR'));
+        this.checkRealtimeAlerts(price);
+        if (!sameCandle || Date.now() - this.lastTickPollAt > 30000) this.scheduleRealtimeAnalysis();
+    }
+
+    bucketTime(timestamp, timeframe) {
+        const seconds = {
+            '1m': 60,
+            '5m': 300,
+            '15m': 900,
+            '1h': 3600,
+            '4h': 14400,
+            '1d': 86400,
+            '1w': 604800,
+        }[timeframe] || 60;
+        return Math.floor(Number(timestamp) / seconds) * seconds;
+    }
+
+    tickConnectionLabel(tick) {
+        const source = String(tick.source || '').toUpperCase();
+        return source ? `${source} tempo real` : 'Tick tempo real';
     }
 
     handleTradeStream(trade) {
@@ -1138,6 +1221,36 @@ class AdvancedDashboard {
     setConnectionState(text) {
         this.setText('connectionState', text);
         this.setText('lastUpdate', new Date().toLocaleTimeString('pt-BR'));
+        this.updateRealtimeBadge(text);
+    }
+
+    updateRealtimeBadge(rawState) {
+        const status = this.realtimeBadgeStatus(rawState);
+        let badge = document.getElementById('realtimeStatusBadge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'realtimeStatusBadge';
+            badge.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;padding:6px 10px;border-radius:999px;font:600 11px Inter,Arial,sans-serif;letter-spacing:0;background:rgba(3,7,18,.86);border:1px solid rgba(148,163,184,.24);box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:none;';
+            document.body.appendChild(badge);
+        }
+        badge.textContent = status.label;
+        badge.style.color = status.color;
+        badge.style.borderColor = status.border;
+    }
+
+    realtimeBadgeStatus(rawState) {
+        const state = String(rawState || '').toLowerCase();
+        const wsActive = this.websocketEngine?.socket?.readyState === WebSocket.OPEN;
+        if (state.includes('rest') || state.includes('tick') || state.includes('polling') || state.includes('historico') || state.includes('indisponivel')) {
+            return { label: 'Fallback REST/Tick', color: '#facc15', border: 'rgba(250,204,21,.36)' };
+        }
+        if (state.includes('reconect') || state.includes('falh') || state.includes('atualizando') || state.includes('carregando')) {
+            return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
+        }
+        if (wsActive || state.includes('websocket') || state.includes('bybit') || state.includes('tempo real')) {
+            return { label: 'Realtime ativo', color: '#22c55e', border: 'rgba(34,197,94,.38)' };
+        }
+        return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
     }
 
     setText(id, value) {

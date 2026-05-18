@@ -119,8 +119,11 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/lightweight-charts.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>
-<script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
-<script src="{{ url_for('static', filename='js/operacional-live.js') }}"></script>
+<script src="{{ url_for('static', filename='js/lightweight-charts.js') }}?v=20260513-1"></script>
+<script src="{{ url_for('static', filename='js/chart-engine.js') }}?v=20260513-1"></script>
+<script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}?v=20260513-1"></script>
+<script src="{{ url_for('static', filename='js/websocket-engine.js') }}?v=20260513-1"></script>
+<script src="{{ url_for('static', filename='js/market-data-engine.js') }}?v=20260513-1"></script>
+<script src="{{ url_for('static', filename='js/operacional-live.js') }}?v=20260513-1"></script>
 {% endblock %}
+

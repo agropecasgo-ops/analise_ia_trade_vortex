@@ -176,10 +176,11 @@ class LiveTradingDashboard {
             this.websocketEngine?.close();
             this.socket = null;
             this.setConnection(this.streaming ? 'MT5 tempo real' : 'REST / historico');
-            this.candlePollTimer = setInterval(() => this.loadInitialCandles(false), this.streaming ? 10000 : 60000);
             if (this.streaming) {
                 this.refreshMarketTick();
                 this.tickPollTimer = setInterval(() => this.refreshMarketTick(), 1500);
+            } else {
+                this.candlePollTimer = setInterval(() => this.loadInitialCandles(false), 60000);
             }
             return;
         }
@@ -193,8 +194,9 @@ class LiveTradingDashboard {
         this.websocketEngine?.connectKline({
             symbol: this.symbol,
             timeframe: this.timeframe,
+            includeTrades: true,
             onState: (state) => this.setConnection(state),
-            onKline: (kline) => this.handleKline({ k: kline }),
+            onKline: (kline) => this.handleKline(kline),
         });
         this.socket = this.websocketEngine?.socket || null;
     }
@@ -237,7 +239,7 @@ class LiveTradingDashboard {
             value: volumeValue,
             color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
         };
-        this.chartEngine?.update(candle, volume);
+        if (!this.chartEngine?.update(candle, volume)) return;
         this.lastCandles = this.chartEngine?.lastCandles || this.lastCandles;
     }
 
@@ -255,22 +257,11 @@ class LiveTradingDashboard {
         return Math.max(0, current - previous);
     }
 
-    handleKline(payload) {
-        const kline = payload.k;
+    handleKline(kline) {
         if (!kline) return;
-        const candle = {
-            time: Math.floor(kline.t / 1000),
-            open: Number(kline.o),
-            high: Number(kline.h),
-            low: Number(kline.l),
-            close: Number(kline.c),
-        };
-        const volume = {
-            time: candle.time,
-            value: Number(kline.v),
-            color: candle.close >= candle.open ? 'rgba(38, 166, 154, 0.45)' : 'rgba(239, 83, 80, 0.45)',
-        };
-        this.chartEngine?.update(candle, volume);
+        const candle = kline.candle;
+        const volume = kline.volume;
+        if (!this.chartEngine?.update(candle, volume)) return;
         this.lastCandles = this.chartEngine?.lastCandles || this.lastCandles;
         this.setText('livePrice', this.formatPrice(candle.close));
         this.lastCandleTime = candle.time;
@@ -278,10 +269,10 @@ class LiveTradingDashboard {
         const priceMove = this.lastAnalysisPrice ? Math.abs(candle.close - this.lastAnalysisPrice) / this.lastAnalysisPrice : 0;
         const volumeMove = this.lastAnalysisVolume ? Number(kline.v) / Math.max(this.lastAnalysisVolume, 0.00000001) : 1;
         const srBroken = this.isSupportResistanceBroken(candle.close);
-        if (kline.x || priceMove >= 0.004 || volumeMove >= 1.8 || srBroken) {
+        if (kline.isClosed || priceMove >= 0.004 || volumeMove >= 1.8 || srBroken) {
             this.lastAnalysisPrice = candle.close;
             this.lastAnalysisVolume = Number(kline.v);
-            this.fetchLiveStatus(kline.x ? 'new_candle' : srBroken ? 'support_resistance_break' : 'strong_change');
+            this.fetchLiveStatus(kline.isClosed ? 'new_candle' : srBroken ? 'support_resistance_break' : 'strong_change');
         }
     }
 
@@ -713,6 +704,36 @@ class LiveTradingDashboard {
 
     setConnection(text) {
         this.setText('liveConnection', text);
+        this.updateRealtimeBadge(text);
+    }
+
+    updateRealtimeBadge(rawState) {
+        const status = this.realtimeBadgeStatus(rawState);
+        let badge = document.getElementById('realtimeStatusBadge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'realtimeStatusBadge';
+            badge.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;padding:6px 10px;border-radius:999px;font:600 11px Inter,Arial,sans-serif;letter-spacing:0;background:rgba(3,7,18,.86);border:1px solid rgba(148,163,184,.24);box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:none;';
+            document.body.appendChild(badge);
+        }
+        badge.textContent = status.label;
+        badge.style.color = status.color;
+        badge.style.borderColor = status.border;
+    }
+
+    realtimeBadgeStatus(rawState) {
+        const state = String(rawState || '').toLowerCase();
+        const wsActive = this.websocketEngine?.socket?.readyState === WebSocket.OPEN;
+        if (state.includes('rest') || state.includes('tick') || state.includes('mt5') || state.includes('polling') || state.includes('historico') || state.includes('indisponivel')) {
+            return { label: 'Fallback REST/Tick', color: '#facc15', border: 'rgba(250,204,21,.36)' };
+        }
+        if (state.includes('reconect') || state.includes('falh') || state.includes('aguard') || state.includes('atualizando') || state.includes('carregando')) {
+            return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
+        }
+        if (wsActive || state.includes('websocket') || state.includes('bybit')) {
+            return { label: 'Realtime ativo', color: '#22c55e', border: 'rgba(34,197,94,.38)' };
+        }
+        return { label: 'Reconectando...', color: '#fb923c', border: 'rgba(251,146,60,.38)' };
     }
 
     pushMessage(message) {

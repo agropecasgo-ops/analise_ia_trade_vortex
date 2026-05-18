@@ -43,6 +43,8 @@
         <div><span>Status</span><strong id="opMarketStatus">--</strong></div>
         <div><span>Contexto</span><strong id="opContext">--</strong></div>
         <div><span>Direcao Provavel</span><strong id="opBias">--</strong></div>
+        <div><span>Preco</span><strong id="opLivePrice">--</strong></div>
+        <div><span>Conexao</span><strong id="opConnectionStatus">Desconectado</strong></div>
     </section>
 
     <div class="operacional-grid">
@@ -140,5 +142,8 @@
 <script src="{{ url_for('static', filename='js/lightweight-charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chart-engine.js') }}"></script>
 <script src="{{ url_for('static', filename='js/visual-ai-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='js/websocket-engine.js') }}"></script>
+<script src="{{ url_for('static', filename='js/market-data-engine.js') }}"></script>
 <script src="{{ url_for('static', filename='js/operacional.js') }}"></script>
 {% endblock %}
+

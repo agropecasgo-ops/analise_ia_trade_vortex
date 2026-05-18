@@ -1,6 +1,7 @@
 import os
 import math
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -85,12 +86,12 @@ app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 init_db()
 
 market = MarketDataRouter()
-candle_cache = TimedCache(ttl_seconds=12)
-ticker_cache = TimedCache(ttl_seconds=8)
-chart_payload_cache = TimedCache(ttl_seconds=8)
-analysis_response_cache = TimedCache(ttl_seconds=10)
-analysis_core_cache = TimedCache(ttl_seconds=10)
-live_status_cache = TimedCache(ttl_seconds=3)
+candle_cache = TimedCache(ttl_seconds=15)
+ticker_cache = TimedCache(ttl_seconds=10)
+chart_payload_cache = TimedCache(ttl_seconds=12)
+analysis_response_cache = TimedCache(ttl_seconds=15)
+analysis_core_cache = TimedCache(ttl_seconds=15)
+live_status_cache = TimedCache(ttl_seconds=4)
 live_signal_manager = LiveSignalManager()
 live_context_engine = ContextEngine()
 analysis_context_engine = ContextEngine()
@@ -683,22 +684,42 @@ def build_analysis(symbol, timeframe, limit=500):
     except Exception:
         smc = default_smc()
     score = int(max(0, min(100, score + smc.get("score_adjustment", 0))))
-    try:
-        volume_analysis = read_volume(df)
-    except Exception:
-        volume_analysis = default_volume()
-    try:
-        wyckoff = read_wyckoff_advanced(df)
-    except Exception:
-        wyckoff = default_wyckoff()
-    try:
-        elliott_wave = read_elliott_wave(df)
-    except Exception:
-        elliott_wave = default_elliott_wave()
-    try:
-        tape_reading = read_tape(df)
-    except Exception:
-        tape_reading = default_tape_reading()
+
+    # Run independent analysis engines in parallel
+    def _read_volume():
+        try:
+            return read_volume(df)
+        except Exception:
+            return default_volume()
+
+    def _read_wyckoff():
+        try:
+            return read_wyckoff_advanced(df)
+        except Exception:
+            return default_wyckoff()
+
+    def _read_elliott():
+        try:
+            return read_elliott_wave(df)
+        except Exception:
+            return default_elliott_wave()
+
+    def _read_tape():
+        try:
+            return read_tape(df)
+        except Exception:
+            return default_tape_reading()
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        f_vol = pool.submit(_read_volume)
+        f_wyc = pool.submit(_read_wyckoff)
+        f_ell = pool.submit(_read_elliott)
+        f_tap = pool.submit(_read_tape)
+        volume_analysis = f_vol.result()
+        wyckoff = f_wyc.result()
+        elliott_wave = f_ell.result()
+        tape_reading = f_tap.result()
+
     score = int(max(0, min(100, score
         + volume_analysis.get("score_adjustment", 0)
         + wyckoff.get("score_adjustment", 0)
@@ -743,11 +764,11 @@ def build_multi_timeframe(symbol, timeframes=None):
     counts = {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0}
     strengths = {"BULLISH": [], "BEARISH": [], "NEUTRAL": []}
 
-    for timeframe in timeframes:
+    def _analyze_tf(tf):
         try:
-            df, _, signal, _, _, score, _, validation, volume_analysis, _, _, _ = build_analysis(symbol, timeframe, limit=500)
+            df, _, signal, _, _, score, _, validation, volume_analysis, _, _, _ = build_analysis(symbol, tf, limit=500)
         except Exception:
-            df = load_market_data(DEFAULT_SYMBOL, timeframe, 500)
+            df = load_market_data(DEFAULT_SYMBOL, tf, 500)
             signal = default_signal(df)
             score = 50
             validation = default_validation()
@@ -755,31 +776,32 @@ def build_multi_timeframe(symbol, timeframes=None):
         try:
             technical = read_technical(df)
         except Exception:
-            technical = {
-                "signal": "NEUTRAL",
-                "score": 0,
-                "confidence": 0,
-                "trend": {"direction": "SIDEWAYS"},
+            technical = {"signal": "NEUTRAL", "score": 0, "confidence": 0, "trend": {"direction": "SIDEWAYS"}}
+        return tf, df, signal, score, validation, volume_analysis, technical
+
+    with ThreadPoolExecutor(max_workers=len(timeframes)) as pool:
+        futures = {pool.submit(_analyze_tf, tf): tf for tf in timeframes}
+        for future in as_completed(futures):
+            tf, df, signal, score, validation, volume_analysis, technical = future.result()
+            signal_direction = direction_from_signal(signal["signal_type"], technical["signal"])
+            trend_direction = direction_from_trend(technical["trend"])
+            direction = signal_direction if signal_direction != "NEUTRAL" else trend_direction
+            strength = int(max(0, min(100, round((score * 0.55) + (technical["confidence"] * 0.35) + (abs(technical["score"]) * 3)))))
+            counts[direction] += 1
+            strengths[direction].append(strength)
+            analysis[tf] = {
+                "trend": technical["trend"]["direction"],
+                "trend_direction": trend_direction,
+                "signal": signal["signal_type"],
+                "technical_signal": technical["signal"],
+                "direction": direction,
+                "strength": strength,
+                "confidence": signal["confidence"],
+                "score": signal["score"],
+                "operational_score": score,
+                "probability": validation["entry_quality"]["probability"],
+                "volume_signal": volume_analysis["signal"],
             }
-        signal_direction = direction_from_signal(signal["signal_type"], technical["signal"])
-        trend_direction = direction_from_trend(technical["trend"])
-        direction = signal_direction if signal_direction != "NEUTRAL" else trend_direction
-        strength = int(max(0, min(100, round((score * 0.55) + (technical["confidence"] * 0.35) + (abs(technical["score"]) * 3)))))
-        counts[direction] += 1
-        strengths[direction].append(strength)
-        analysis[timeframe] = {
-            "trend": technical["trend"]["direction"],
-            "trend_direction": trend_direction,
-            "signal": signal["signal_type"],
-            "technical_signal": technical["signal"],
-            "direction": direction,
-            "strength": strength,
-            "confidence": signal["confidence"],
-            "score": signal["score"],
-            "operational_score": score,
-            "probability": validation["entry_quality"]["probability"],
-            "volume_signal": volume_analysis["signal"],
-        }
 
     dominant_direction = max(counts, key=lambda item: counts[item])
     dominant_count = counts[dominant_direction]
@@ -2146,6 +2168,8 @@ def api_operacional_analysis(symbol, timeframe):
             "market_label": meta.get("market_label"),
             "market_status": meta.get("market_status"),
             "market_message": meta.get("message"),
+            "streaming": meta.get("streaming", False),
+            "fallback": meta.get("fallback", False),
         })
         return jsonify(sanitize_json(payload))
     except Exception as error:

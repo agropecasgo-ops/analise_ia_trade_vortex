@@ -1,0 +1,16 @@
+/* Estilos globais para o dashboard */
+body {
+    background-color: #121212;
+    color: #ffffff;
+    font-family: 'Arial', sans-serif;
+}
+
+/* Definição do tema com glow neon verde */
+.neon-green-glow {
+    text-shadow: 0 0 10px #5eff62, 0 0 20px #5eff62, 0 0 30px #5eff62;
+}
+
+/* Outros estilos globais */
+.container {
+    padding: 20px;
+}

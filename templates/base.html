@@ -12,8 +12,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260512-4">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/advanced.css') }}?v=20260512-4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260514-1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/advanced.css') }}?v=20260514-1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-monitor.css') }}?v=20260514-1">
     
     {% block extra_css %}{% endblock %}
 </head>
@@ -22,7 +23,7 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h2><i class="fas fa-chart-line"></i> FinanceAI</h2>
+                <h2><i class="fas fa-chart-line"></i> <span>FinanceAI</span></h2>
                 <span class="sidebar-kicker">Institutional AI Trading Desk</span>
             </div>
             
@@ -81,7 +82,7 @@
             <!-- Top Bar -->
             <header class="top-bar">
                 <div class="top-bar-left">
-                    <button class="btn-toggle-sidebar" id="toggleSidebar">
+                    <button class="btn-toggle-sidebar" id="toggleSidebar" type="button" aria-label="Alternar menu lateral" title="Alternar menu">
                         <i class="fas fa-bars"></i>
                     </button>
                     <span class="page-title">FinanceAI Command Center</span>
@@ -120,7 +121,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     
     <!-- Custom JS -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=20260512-4"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=20260514-1"></script>
     
     {% block extra_js %}{% endblock %}
 </body>

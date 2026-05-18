@@ -201,7 +201,16 @@
                         console.warn("Invalid candle data received:", item); // Log invalid data
                         return null;
                     }
-                    return { time, open, high, low, close, volume: Number(item?.volume ?? item?.v ?? 0) || 0 };
+                    return {
+                        time,
+                        open,
+                        high,
+                        low,
+                        close,
+                        volume: Number(item?.volume ?? item?.v ?? 0) || 0,
+                        official: Boolean(item?.official),
+                        closed: Boolean(item?.closed),
+                    };
                 })
                 .filter(Boolean)
                 .sort((a, b) => a.time - b.time);
@@ -255,13 +264,25 @@
         }
 
         update(candle, volume) {
-            const nextCandle = this.normalizeCandles([candle])[0];
-            const nextVolume = this.normalizeVolumes(volume ? [volume] : [nextCandle])[0];
-            if (!nextCandle?.time) return;
+            let nextCandle = this.normalizeCandles([candle])[0];
+            if (!nextCandle?.time) return false;
+            const latest = this.lastCandles[this.lastCandles.length - 1];
+            const latestTime = Math.max(Number(latest?.time || 0), Number(this.pendingCandle?.time || 0));
+            if (latestTime && nextCandle.time < latestTime) return false;
+            const samePending = this.pendingCandle?.time === nextCandle.time ? this.pendingCandle : null;
+            const sameLatest = latest?.time === nextCandle.time ? latest : null;
+            const previousSame = samePending || sameLatest;
+            nextCandle = previousSame ? this.mergeRealtimeCandle(previousSame, nextCandle) : nextCandle;
+            if (previousSame && this.sameCandle(previousSame, nextCandle)) return false;
+            const nextVolume = this.normalizeVolumes(volume ? [{
+                ...volume,
+                time: nextCandle.time,
+                value: Number(nextCandle.volume ?? volume.value ?? volume.volume ?? 0) || 0,
+            }] : [nextCandle])[0];
 
             this.pendingCandle = nextCandle;
             this.pendingVolume = nextVolume;
-            if (this.updateFrame) return;
+            if (this.updateFrame) return true;
             this.updateFrame = requestAnimationFrame(() => {
                 const pendingCandle = this.pendingCandle;
                 const pendingVolume = this.pendingVolume;
@@ -278,6 +299,29 @@
                     this.upsertVolume(pendingVolume);
                 }
             });
+            return true;
+        }
+
+        mergeRealtimeCandle(previous, next) {
+            return {
+                ...next,
+                open: next.official ? next.open : previous.open,
+                high: Math.max(Number(previous.high), Number(next.high)),
+                low: Math.min(Number(previous.low), Number(next.low)),
+                close: next.close,
+                volume: next.closed ? Number(next.volume || 0) : Math.max(Number(previous.volume || 0), Number(next.volume || 0)),
+                official: Boolean(next.official || previous.official),
+                closed: Boolean(next.closed),
+            };
+        }
+
+        sameCandle(a, b) {
+            return Number(a.time) === Number(b.time)
+                && Number(a.open) === Number(b.open)
+                && Number(a.high) === Number(b.high)
+                && Number(a.low) === Number(b.low)
+                && Number(a.close) === Number(b.close)
+                && Number(a.volume || 0) === Number(b.volume || 0);
         }
 
         upsertCandle(candle) {

@@ -144,7 +144,17 @@ function setupSidebar() {
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function() {
             const sidebar = document.querySelector('.sidebar');
-            sidebar.classList.toggle('active');
+            if (!sidebar) {
+                return;
+            }
+
+            if (window.innerWidth <= 768) {
+                sidebar.classList.toggle('active');
+                document.body.classList.remove('sidebar-collapsed');
+                return;
+            }
+
+            document.body.classList.toggle('sidebar-collapsed');
         });
     }
     
@@ -338,6 +348,8 @@ function handleWindowResize() {
         if (sidebar) {
             sidebar.classList.remove('active');
         }
+    } else {
+        document.body.classList.remove('sidebar-collapsed');
     }
 }
 
