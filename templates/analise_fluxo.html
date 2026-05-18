@@ -935,6 +935,7 @@
 (() => {
     const $ = (id) => document.getElementById(id);
     let flowChartEngine = null;
+    let activeFlowRequestId = 0;
     const normalize = (value) => window.FinanceText?.normalize ? window.FinanceText.normalize(value) : value;
     const clamp = (value) => Math.max(0, Math.min(100, Number(value) || 0));
     const text = (id, value) => {
@@ -949,6 +950,7 @@
         "'": "&#39;"
     })[char]);
     const price = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "--";
+    const isLatestFlowRequest = (requestId) => requestId === activeFlowRequestId;
     const compact = (value) => {
         if (value == null || value === "") return "--";
         if (typeof value === "boolean") return value ? "SIM" : "NAO";
@@ -1143,6 +1145,13 @@
         return flowChartEngine;
     }
 
+    function clearFlowChart(statusText) {
+        if (flowChartEngine) {
+            flowChartEngine.clearOverlays?.();
+        }
+        if (statusText) text("flowOverlayState", statusText);
+    }
+
     function firstFinite(...values) {
         for (const value of values.flat()) {
             const number = Number(value);
@@ -1293,18 +1302,19 @@
         return markers.filter((item) => item.text);
     }
 
-    async function renderFlowChart(symbol, timeframe, analysis) {
+    async function renderFlowChart(symbol, timeframe, analysis, requestId) {
+        if (!isLatestFlowRequest(requestId)) return;
         const chart = ensureFlowChart();
         if (!chart) return;
         try {
             text("flowOverlayState", "CARREGANDO CANDLES");
             const response = await fetch(`/api/candles/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}?limit=260&assetType=crypto`);
             const payload = await response.json();
+            if (!isLatestFlowRequest(requestId)) return;
             const candles = payload.candles || [];
             const volumes = payload.volumes || [];
             if (!Array.isArray(candles) || !candles.length) {
-                text("flowOverlayState", "SEM CANDLES");
-                chart.clearOverlays?.();
+                clearFlowChart("SEM CANDLES");
                 return;
             }
             chart.setData(candles, volumes, true);
@@ -1315,11 +1325,15 @@
             chart.applyMarkers?.(buildOverlayMarkers(candles, analysis));
             text("flowOverlayState", "OVERLAYS CONTEXTUAIS");
         } catch (error) {
-            text("flowOverlayState", "FALHA NO GRAFICO");
+            if (!isLatestFlowRequest(requestId)) return;
+            clearFlowChart("FALHA NO GRAFICO");
         }
     }
 
     async function loadFlow() {
+        const requestId = activeFlowRequestId + 1;
+        activeFlowRequestId = requestId;
+
         const symbol = $("flowAsset").value;
         const timeframe = $("flowTimeframe").value;
         const runButton = $("flowGenerate");
@@ -1331,6 +1345,7 @@
         try {
             const response = await fetch(`/api/flow-analysis?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&assetType=crypto`);
             const data = await response.json();
+            if (!isLatestFlowRequest(requestId)) return;
             const analysis = data.institutional || {};
             const probabilities = analysis.probabilities || {};
             const tradePlan = analysis.tradePlan || {};
@@ -1369,8 +1384,9 @@
             renderOrderFlow(analysis);
             renderMultiTimeframe(analysis);
             renderAiNarrative(analysis);
-            renderFlowChart(symbol, timeframe, analysis);
+            renderFlowChart(symbol, timeframe, analysis, requestId);
         } catch (error) {
+            if (!isLatestFlowRequest(requestId)) return;
             $("flowStateDot")?.classList.add("error");
             text("flowDeskState", "ERRO");
             text("flowStatus", "Não foi possível carregar a leitura de fluxo agora.");
@@ -1379,8 +1395,11 @@
             renderOrderFlow({});
             renderMultiTimeframe({});
             renderAiNarrative({});
+            clearFlowChart("FALHA NO GRAFICO");
         } finally {
-            runButton?.classList.remove("loading");
+            if (isLatestFlowRequest(requestId)) {
+                runButton?.classList.remove("loading");
+            }
         }
     }
 
