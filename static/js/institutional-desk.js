@@ -4,7 +4,7 @@
             this.assetType = 'crypto';
             this.asset = 'BTCUSDT';
             this.timeframe = '15m';
-            this.operationalMode = localStorage.getItem('financeai.institutional.operationalMode') || 'moderado';
+            this.operationalMode = window.FinanceOperationalMode?.get?.() || 'moderado';
             this.chartEngine = null;
             this.marketData = new window.MarketDataEngine({ provider: 'institutional', ttl: 6000 });
             this.analysisController = null;
@@ -17,10 +17,6 @@
         async init() {
             this.setupChart();
             this.bindEvents();
-            const modeSelect = document.getElementById('institutionalOperationalMode');
-            if (modeSelect && [...modeSelect.options].some((option) => option.value === this.operationalMode)) {
-                modeSelect.value = this.operationalMode;
-            }
             await this.loadAssets();
             await this.generate(true);
         }
@@ -48,9 +44,9 @@
             document.getElementById('institutionalTimeframe')?.addEventListener('change', (event) => {
                 this.timeframe = event.target.value;
             });
-            document.getElementById('institutionalOperationalMode')?.addEventListener('change', (event) => {
-                this.operationalMode = event.target.value;
-                localStorage.setItem('financeai.institutional.operationalMode', this.operationalMode);
+            window.FinanceOperationalMode?.onChange?.((mode) => {
+                this.operationalMode = mode;
+                this.generate(true);
             });
             document.getElementById('institutionalGenerate')?.addEventListener('click', () => this.generate(true));
             document.getElementById('institutionalFitChart')?.addEventListener('click', () => this.chartEngine?.fit?.());
@@ -89,7 +85,7 @@
             this.asset = document.getElementById('institutionalAsset')?.value || this.asset;
             this.assetType = document.getElementById('institutionalAssetType')?.value || this.assetType;
             this.timeframe = document.getElementById('institutionalTimeframe')?.value || this.timeframe;
-            this.operationalMode = document.getElementById('institutionalOperationalMode')?.value || this.operationalMode;
+            this.operationalMode = window.FinanceOperationalMode?.get?.() || this.operationalMode;
             this.setLoading(true);
             this.setState('ANALISANDO', false);
             try {

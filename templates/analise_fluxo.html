@@ -626,7 +626,6 @@
         grid-template-columns:
             minmax(280px, 1.45fr)
             minmax(160px, 0.8fr)
-            minmax(190px, 0.85fr)
             minmax(190px, auto);
     }
 
@@ -712,14 +711,6 @@
                 <option value="1h">1h</option>
                 <option value="4h">4h</option>
                 <option value="1d">1d</option>
-            </select>
-        </div>
-        <div class="institutional-field">
-            <label for="flowOperationalMode">Nivel operacional</label>
-            <select id="flowOperationalMode" class="institutional-input">
-                <option value="conservador">Conservador</option>
-                <option value="moderado" selected>Moderado</option>
-                <option value="agressivo">Agressivo</option>
             </select>
         </div>
         <button id="flowGenerate" class="institutional-run" type="button">
@@ -953,7 +944,6 @@
     const $ = (id) => document.getElementById(id);
     let flowChartEngine = null;
     let activeFlowRequestId = 0;
-    const operationalModeStorageKey = "financeai.flow.operationalMode";
     const normalize = (value) => window.FinanceText?.normalize ? window.FinanceText.normalize(value) : value;
     const clamp = (value) => Math.max(0, Math.min(100, Number(value) || 0));
     const text = (id, value) => {
@@ -970,7 +960,7 @@
     const price = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "--";
     const isLatestFlowRequest = (requestId) => requestId === activeFlowRequestId;
     const selectedAssetType = () => $("flowAsset")?.selectedOptions?.[0]?.dataset?.market || "crypto";
-    const selectedOperationalMode = () => $("flowOperationalMode")?.value || "moderado";
+    const selectedOperationalMode = () => window.FinanceOperationalMode?.get?.() || "moderado";
     const compact = (value) => {
         if (value == null || value === "") return "--";
         if (typeof value === "boolean") return value ? "SIM" : "NAO";
@@ -1378,15 +1368,6 @@
         }
     }
 
-    function restoreOperationalMode() {
-        const select = $("flowOperationalMode");
-        if (!select) return;
-        const stored = localStorage.getItem(operationalModeStorageKey);
-        if (stored && [...select.options].some((option) => option.value === stored)) {
-            select.value = stored;
-        }
-    }
-
     async function loadFlow() {
         const requestId = activeFlowRequestId + 1;
         activeFlowRequestId = requestId;
@@ -1465,12 +1446,8 @@
     $("flowGenerate")?.addEventListener("click", loadFlow);
     $("flowAsset")?.addEventListener("change", loadFlow);
     $("flowTimeframe")?.addEventListener("change", loadFlow);
-    $("flowOperationalMode")?.addEventListener("change", () => {
-        localStorage.setItem(operationalModeStorageKey, selectedOperationalMode());
-        loadFlow();
-    });
+    window.FinanceOperationalMode?.onChange?.(() => loadFlow());
     $("flowChartFit")?.addEventListener("click", () => flowChartEngine?.fit?.());
-    restoreOperationalMode();
     loadAssets().finally(loadFlow);
 })();
 </script>

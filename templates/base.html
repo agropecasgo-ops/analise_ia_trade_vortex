@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260514-1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260518-global-mode">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/advanced.css') }}?v=20260514-1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-monitor.css') }}?v=20260514-1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/command-center.css') }}?v=20260517-1">
@@ -113,6 +113,15 @@
                 </div>
                 
                 <div class="top-bar-right">
+                    <div class="global-operational-mode" title="Nivel operacional global">
+                        <i class="fas fa-sliders"></i>
+                        <label for="globalOperationalMode">Modo</label>
+                        <select id="globalOperationalMode" data-operational-mode-select>
+                            <option value="conservador">Conservador</option>
+                            <option value="moderado">Moderado</option>
+                            <option value="agressivo">Agressivo</option>
+                        </select>
+                    </div>
                     <div class="terminal-status">
                         <span></span>
                         Mercado IA Online
@@ -146,6 +155,7 @@
     
     <!-- Custom JS -->
     <script src="{{ url_for('static', filename='js/text-normalizer.js') }}?v=20260517-1"></script>
+    <script src="{{ url_for('static', filename='js/operational-mode.js') }}?v=20260518-global-mode"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=20260514-1"></script>
     
     {% block extra_js %}{% endblock %}
