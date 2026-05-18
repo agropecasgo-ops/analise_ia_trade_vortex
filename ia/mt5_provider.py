@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
+from .mt5_connection import initialize_mt5_attach_only
+
 try:
     import MetaTrader5 as mt5
 except Exception:  # pragma: no cover - depende do terminal local do usuario
@@ -56,11 +58,9 @@ class MT5Provider:
         if not self.available:
             self.last_error = "MetaTrader5 Python API nao instalada."
             return False
-        if self.initialized:
+        if self.initialized and mt5.terminal_info() is not None:
             return True
-        self.initialized = bool(mt5.initialize())
-        if not self.initialized:
-            self.last_error = str(mt5.last_error())
+        self.initialized, self.last_error = initialize_mt5_attach_only(mt5)
         return self.initialized
 
     def resolve_symbol(self, symbol):

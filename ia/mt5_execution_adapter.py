@@ -8,6 +8,7 @@ continua em paper trading.
 import os
 
 from .broker_adapter import BrokerAdapter
+from .mt5_connection import initialize_mt5_attach_only
 
 try:
     import MetaTrader5 as mt5
@@ -18,11 +19,16 @@ except Exception:  # pragma: no cover
 class MT5ExecutionAdapter(BrokerAdapter):
     name = "mt5"
 
+    def initialize(self):
+        ok, error = initialize_mt5_attach_only(mt5)
+        return ok, error
+
     def send_order(self, order):
         if mt5 is None:
             return {"success": False, "blocked": True, "reason": "MetaTrader5 Python API nao instalada."}
-        if not mt5.initialize():
-            return {"success": False, "blocked": True, "reason": f"MT5 nao inicializado: {mt5.last_error()}"}
+        ok, error = self.initialize()
+        if not ok:
+            return {"success": False, "blocked": True, "reason": f"MT5 nao inicializado: {error}"}
         account = mt5.account_info()
         if os.getenv("EXECUTION_REQUIRE_DEMO", "true").lower() == "true":
             demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0)
@@ -59,12 +65,14 @@ class MT5ExecutionAdapter(BrokerAdapter):
         return {"success": False, "blocked": True, "reason": "Fechamento MT5 em massa nao habilitado nesta etapa."}
 
     def positions(self):
-        if mt5 is None or not mt5.initialize():
+        ok, _ = self.initialize()
+        if mt5 is None or not ok:
             return []
         return [item._asdict() for item in (mt5.positions_get() or [])]
 
     def account(self):
-        if mt5 is None or not mt5.initialize():
+        ok, _ = self.initialize()
+        if mt5 is None or not ok:
             return {"balance": 0, "equity": 0, "source": "mt5_unavailable"}
         account = mt5.account_info()
         return account._asdict() if hasattr(account, "_asdict") else {"balance": 0, "equity": 0}
