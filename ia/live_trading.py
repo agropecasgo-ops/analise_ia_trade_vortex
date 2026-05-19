@@ -24,15 +24,15 @@ class LiveTradingIA:
         "WAITING_CONFIRMATION": "AGUARDANDO CONFIRMACAO",
         "AGGRESSIVE_ENTRY": "ENTRADA AGRESSIVA POSSIVEL",
         "CONSERVATIVE_ENTRY": "ENTRADA CONSERVADORA POSSIVEL",
-        "BUY_CONFIRMED": "COMPRA CONFIRMADA",
-        "SELL_CONFIRMED": "VENDA CONFIRMADA",
+        "BUY_CONFIRMED": "Entrada confirmada",
+        "SELL_CONFIRMED": "Entrada confirmada",
         "SIDEWAYS": "MERCADO LATERALIZADO",
         "WEAK_VOLUME": "VOLUME FRACO",
         "HIGH_RISK": "ALTO RISCO",
         "INVALIDATED": "ENTRADA INVALIDADA",
         "WAIT_NEXT_CANDLE": "AGUARDAR NOVO CANDLE",
         "EARLY_ENTRY": "ENTRADA ANTECIPADA",
-        "LATE_ENTRY": "ENTRADA ATRASADA / NAO PERSEGUIR PRECO",
+        "LATE_ENTRY": "ENTRADA ATRASADA / NÃO PERSEGUIR PREÇO",
     }
 
     def __init__(self, candles, symbol, timeframe, ticker=None, operational_mode="moderado", min_score=65):
@@ -471,7 +471,7 @@ class LiveTradingIA:
         if smc.get("inducement", {}).get("detected"):
             items.append("Induzimento ainda ativo.")
         if smc.get("false_breakout", {}).get("detected"):
-            items.append("Possivel falso rompimento. Nao entrar ainda.")
+            items.append("Possivel falso rompimento. Não entrar ainda.")
         if float(volume.get("metrics", {}).get("volume_ratio", 1)) < 0.72:
             items.append("Volume ainda insuficiente para confirmar entrada.")
         if float(levels.get("risk_reward") or 0) < 1:
@@ -488,7 +488,7 @@ class LiveTradingIA:
         if breakout.get("detected"):
             messages.append("Rompimento detectado, aguardando confirmacao." if score < 78 else "Rompimento confirmado por confluencia.")
         if smc.get("false_breakout", {}).get("detected"):
-            messages.append("Possivel falso rompimento. Nao entrar ainda.")
+            messages.append("Possivel falso rompimento. Não entrar ainda.")
         if float(volume.get("metrics", {}).get("volume_ratio", 1)) < 0.72:
             messages.append("Volume ainda insuficiente para confirmar entrada.")
         if direction == "BUY" and score >= 55:

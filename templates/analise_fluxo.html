@@ -1390,6 +1390,8 @@
             const probabilities = analysis.probabilities || {};
             const tradePlan = analysis.tradePlan || {};
             const risk = analysis.risk || {};
+            const entryTiming = analysis.entryTiming || {};
+            const entryAllowed = Boolean(entryTiming.entry_allowed);
             const direction = classify(analysis);
             const buy = clamp(probabilities.buy);
             const sell = clamp(probabilities.sell);
@@ -1400,10 +1402,10 @@
 
             $("flowDecisionCard")?.setAttribute("data-tone", direction.tone);
             $("flowDirectionIcon").innerHTML = `<i class="fas ${direction.icon}"></i>`;
-            text("flowDeskState", analysis.status || (data.success ? "CONCLUIDO" : "SEM DADOS"));
+            text("flowDeskState", entryTiming.label || analysis.status || (data.success ? "CONCLUIDO" : "SEM DADOS"));
             text("flowUpdated", new Date().toLocaleTimeString("pt-BR"));
             text("flowDirection", direction.label);
-            text("flowStatus", analysis.aiExplanation || data.error || "Sem confluência institucional suficiente.");
+            text("flowStatus", entryTiming.reason || analysis.aiExplanation || data.error || "Sem confluência institucional suficiente.");
             text("flowProbBuy", `${Math.round(buy)}%`);
             text("flowProbSell", `${Math.round(sell)}%`);
             text("flowProbSideways", `${Math.round(sideways)}%`);
@@ -1412,7 +1414,7 @@
             setBar("flowNeutralBar", sideways);
             setScore(score, confidence);
             setStrength(flowScore, direction.tone);
-            text("flowEntryAllowed", analysis.status === "HIGH_PROBABILITY" ? "LIBERADA" : "AGUARDAR");
+            text("flowEntryAllowed", analysis.status === "HIGH_PROBABILITY" && entryAllowed ? "LIBERADA" : (entryTiming.label || "AGUARDAR"));
             text("flowEntry", price(tradePlan.entry));
             text("flowStop", price(tradePlan.stopLoss));
             text("flowTp1", price(tradePlan.takeProfit1));

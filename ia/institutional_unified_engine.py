@@ -55,9 +55,9 @@ VALID_STATUSES = {"HIGH_PROBABILITY", "WAIT_CONFIRMATION", "DANGEROUS_MARKET", "
 OPERATIONAL_MODES = {
     "conservador": {
         "label": "Conservador",
-        "min_score": 82,
+        "min_score": 80,
         "min_confidence": 78,
-        "risk_min_score": 82,
+        "risk_min_score": 80,
         "min_rr": 1.5,
         "min_core_votes": 3,
         "require_layered_signal": True,
@@ -68,9 +68,9 @@ OPERATIONAL_MODES = {
     },
     "moderado": {
         "label": "Moderado",
-        "min_score": 70,
+        "min_score": 65,
         "min_confidence": 68,
-        "risk_min_score": 70,
+        "risk_min_score": 65,
         "min_rr": 1.2,
         "min_core_votes": 2,
         "require_layered_signal": True,
@@ -81,9 +81,9 @@ OPERATIONAL_MODES = {
     },
     "agressivo": {
         "label": "Agressivo",
-        "min_score": 58,
+        "min_score": 50,
         "min_confidence": 52,
-        "risk_min_score": 58,
+        "risk_min_score": 50,
         "min_rr": 1.0,
         "min_core_votes": 2,
         "require_layered_signal": True,
@@ -222,8 +222,9 @@ class InstitutionalUnifiedEngine:
         risk = self._risk(decision, trade_plan)
         entry_timing = self._entry_timing(decision, trade_plan, risk, macro, structure, confirmation, layered, volume, tape)
         status = self._status(decision, risk, macro, structure, confirmation, smc or smart_money, entry_timing)
-        if status in {"NO_TRADE", "DANGEROUS_MARKET"}:
+        if status in {"NO_TRADE", "DANGEROUS_MARKET", "WAIT_CONFIRMATION", ENTRY_LATE, NO_ENTRY}:
             decision["direction"] = "NEUTRAL"
+        if status in {"NO_TRADE", "DANGEROUS_MARKET"}:
             trade_plan = self._empty_trade_plan(
                 "Aguardar nova confluencia institucional.",
                 self._first_reason(risk.get("rejections"), structure.get("blockers"), confirmation.get("blockers")),
@@ -378,6 +379,7 @@ class InstitutionalUnifiedEngine:
                 "sideways": round(sideways, 1),
             },
             "core_direction": core_direction,
+            "layered_score": round(layered_score, 2),
             "core_votes": {"buy": buy_core, "sell": sell_core, "neutral": core_votes.count("NEUTRAL")},
             "auxiliary_filters": aux,
             "smc_direction": _direction_from_smc(smc),
@@ -528,7 +530,7 @@ class InstitutionalUnifiedEngine:
         tape: dict[str, Any],
     ) -> dict[str, Any]:
         if build_entry_timing is None:
-            return {"status": NO_ENTRY, "label": "Nao entrar", "entry_allowed": False, "reason": "Timing institucional indisponivel."}
+            return {"status": NO_ENTRY, "label": "Não entrar", "entry_allowed": False, "reason": "Timing institucional indisponivel."}
         return build_entry_timing(
             self.df,
             decision.get("core_direction") if decision.get("core_direction") in {"BUY", "SELL"} else decision.get("direction"),
@@ -563,20 +565,24 @@ class InstitutionalUnifiedEngine:
             return "DANGEROUS_MARKET"
         if decision["score"] < self.thresholds["no_trade_score"] or (macro.get("blocked") and not structure.get("valid")):
             return "NO_TRADE"
-        if (
+        candidate_ready = (
             decision["direction"] in {"BUY", "SELL"}
             and decision["score"] >= self.thresholds["min_score"]
             and decision["confidence"] >= self.thresholds["min_confidence"]
+            and decision.get("layered_score", 0) >= self.thresholds["min_score"]
             and risk.get("allowed")
-        ):
-            return "HIGH_PROBABILITY"
-        return "WAIT_CONFIRMATION"
+        )
+        if not candidate_ready:
+            return "WAIT_CONFIRMATION"
+        if entry_timing.get("status") in {ENTRY_LATE, NO_ENTRY} or not entry_timing.get("entry_allowed"):
+            return entry_timing.get("status") if entry_timing.get("status") in {ENTRY_LATE, NO_ENTRY} else "WAIT_CONFIRMATION"
+        return "HIGH_PROBABILITY"
 
     def _timing(self, confirmation: dict[str, Any], layered: dict[str, Any], status: str, entry_timing: dict[str, Any] | None = None) -> dict[str, Any]:
         signal = layered.get("signal") or {}
         entry_timing = entry_timing or {}
         return {
-            "confirmed": status in {"HIGH_PROBABILITY", ENTRY_CONFIRMED},
+            "confirmed": status in {"HIGH_PROBABILITY", ENTRY_CONFIRMED} and bool(entry_timing.get("entry_allowed")),
             "entryStatus": entry_timing.get("status"),
             "entryStatusLabel": entry_timing.get("label"),
             "earlyEntry": entry_timing.get("status") == ENTRY_EARLY,
@@ -642,7 +648,9 @@ class InstitutionalUnifiedEngine:
         if status == ENTRY_CONFIRMED:
             return "Entrada confirmada por confluencia institucional, fluxo, candle e gestao de risco."
         if status == ENTRY_LATE:
-            return "Entrada atrasada: o preco ja se deslocou demais do ponto ideal. Nao perseguir preco."
+            return "Entrada atrasada: o preco ja se deslocou demais do ponto ideal. Não perseguir preço."
+        if status == NO_ENTRY:
+            return entry_timing.get("reason") or "Não entrar: timing institucional nao liberou entrada."
         reason = self._first_reason(
             risk.get("rejections"),
             macro.get("blockers"),

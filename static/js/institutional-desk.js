@@ -175,13 +175,15 @@
             const data = payload?.institutional || {};
             const plan = data.tradePlan || {};
             const probabilities = data.probabilities || {};
+            const entryTiming = data.entryTiming || {};
+            const entryStatus = entryTiming.label || data.entryStatus || data.timing?.entryStatusLabel;
             const directionLabel = this.directionLabel(data.direction);
             this.setText('institutionalDirection', directionLabel);
             this.setText('institutionalStatus', this.statusLabel(data.status));
             this.setText('institutionalConfidence', `${this.formatPercent(data.confidence)}`);
             this.setText('institutionalScore', this.formatScore(data.score));
             this.setText('institutionalRR', this.formatRR(plan.riskReward));
-            this.setText('institutionalTiming', data.timing?.confirmed ? 'CONFIRMADO' : 'AGUARDANDO');
+            this.setText('institutionalTiming', entryStatus || (data.timing?.confirmed ? 'Entrada confirmada' : 'Não entrar'));
             this.setText('probBuy', `${this.formatPercent(probabilities.buy)}`);
             this.setText('probSell', `${this.formatPercent(probabilities.sell)}`);
             this.setText('probSideways', `${this.formatPercent(probabilities.sideways)}`);
@@ -427,6 +429,10 @@
                 WAIT_CONFIRMATION: 'Aguardando confirmacao institucional',
                 DANGEROUS_MARKET: 'Mercado perigoso',
                 NO_TRADE: 'Sem trade',
+                ENTRY_EARLY: 'Entrada antecipada',
+                ENTRY_CONFIRMED: 'Entrada confirmada',
+                ENTRY_LATE: 'Entrada atrasada',
+                NO_ENTRY: 'Não entrar',
             }[status] || 'Aguardando analise';
         }
 

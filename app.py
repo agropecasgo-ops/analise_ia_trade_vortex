@@ -892,7 +892,7 @@ def apply_layered_signal_to_live_status(status, layered_signal):
         state = "EARLY_ENTRY" if entry_timing.get("status") == "ENTRY_EARLY" else "BUY_CONFIRMED" if direction_code == "BUY" else "SELL_CONFIRMED"
         status.update({
             "state": state,
-            "status": entry_timing.get("label") if entry_timing.get("status") == "ENTRY_EARLY" else "COMPRA CONFIRMADA" if direction_code == "BUY" else "VENDA CONFIRMADA",
+            "status": entry_timing.get("label") or ("Entrada confirmada" if direction_code in {"BUY", "SELL"} else "AGUARDANDO CAMADAS"),
             "message": signal.get("reason"),
             "messages": [signal.get("reason"), f"Camada validada: {signal.get('validated_layer')}."] + status.get("messages", [])[:6],
             "entry_aggressive": signal.get("entry_price"),

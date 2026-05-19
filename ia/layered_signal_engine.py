@@ -118,16 +118,17 @@ class LayeredSignalEngine:
             blocked["entry_timing"] = timing
             blocked["entry_status"] = timing.get("label")
             return blocked
-        if timing.get("status") == ENTRY_LATE:
-            blocked = self._empty_signal(timing.get("warning") or timing.get("reason"), score, direction)
-            blocked["risk_gate"] = {**risk, "allowed": False, "blockers": [timing.get("warning") or timing.get("reason")]}
+        if not score.get("approved"):
+            reason = (score.get("blockers") or ["Score abaixo do minimo operacional."])[0]
+            blocked = self._empty_signal(reason, score, direction)
+            blocked["risk_gate"] = {**risk, "allowed": False, "blockers": [reason]}
             blocked["entry_timing"] = timing
             blocked["entry_status"] = timing.get("label")
             return blocked
-        confirmed_by_layers = bool(score.get("approved") and confirmation.get("valid"))
-        if timing.get("status") not in {ENTRY_EARLY, ENTRY_CONFIRMED} and not confirmed_by_layers:
+        if timing.get("status") not in {ENTRY_EARLY, ENTRY_CONFIRMED} or not timing.get("entry_allowed"):
             block_reason = (
-                (confirmation.get("blockers") or [None])[0]
+                timing.get("warning")
+                or (confirmation.get("blockers") or [None])[0]
                 or timing.get("reason")
                 or (score.get("blockers") or [None])[0]
                 or "Timing institucional nao liberou entrada."

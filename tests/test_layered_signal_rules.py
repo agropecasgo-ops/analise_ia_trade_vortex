@@ -108,6 +108,20 @@ class LayeredSignalRuleTests(unittest.TestCase):
         self.assertEqual(result["signal"]["direction_code"], "SELL")
         self.assertGreaterEqual(result["ai_score"]["score"], 80)
 
+    def test_entry_timing_no_entry_blocks_signal_even_with_confirmed_layers(self):
+        with patch("ia.layered_signal_engine.build_entry_timing") as timing_fn:
+            timing_fn.return_value = {
+                "status": "NO_ENTRY",
+                "label": "Não entrar",
+                "entry_allowed": False,
+                "reason": "Timing institucional nao liberou entrada.",
+            }
+            result = self.analyze(direction="BUY")
+
+        self.assertFalse(result["signal"]["generated"])
+        self.assertEqual(result["signal"]["entry_status"], "Não entrar")
+        self.assertIn("Timing institucional", result["signal"]["reason"])
+
     def test_legacy_indicators_cannot_generate_signal_alone(self):
         result = self.analyze(
             direction="BUY",

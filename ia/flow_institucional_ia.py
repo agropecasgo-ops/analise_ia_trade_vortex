@@ -117,7 +117,7 @@ class FlowInstitucionalIA:
             analysis.get("status") in {"HIGH_PROBABILITY", "ENTRY_EARLY", "ENTRY_CONFIRMED"}
             and self.direction in {"BUY", "SELL"}
             and (analysis.get("risk") or {}).get("allowed")
-            and not (analysis.get("entryTiming") or {}).get("do_not_chase")
+            and (analysis.get("entryTiming") or {}).get("entry_allowed")
         )
 
     def _attach_order_flow_context(self, df: pd.DataFrame) -> None:

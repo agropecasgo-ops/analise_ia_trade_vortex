@@ -22,10 +22,10 @@ ENTRY_STATUS_LABELS = {
     ENTRY_EARLY: "Entrada antecipada",
     ENTRY_CONFIRMED: "Entrada confirmada",
     ENTRY_LATE: "Entrada atrasada",
-    NO_ENTRY: "Nao entrar",
+    NO_ENTRY: "Não entrar",
 }
 
-LATE_WARNING = "ENTRADA ATRASADA / NAO PERSEGUIR PRECO"
+LATE_WARNING = "ENTRADA ATRASADA / NÃO PERSEGUIR PREÇO"
 
 _TIMEFRAME_SECONDS = {
     "1m": 60,
@@ -172,10 +172,17 @@ def build_entry_timing(
     candle_direction = "BUY" if close > open_price else "SELL" if close < open_price else "NEUTRAL"
     candle_gaining_strength = candle_direction == direction and body_ratio >= 0.34 and velocity_atr >= 0.18
     flow_direction = _direction_from_flow(flow, volume)
-    strong_flow = flow_direction == direction and (
-        volume_ratio >= 1.12
-        or _num(flow.get("flow_score"), _num(flow.get("intensity"), 0)) >= 58
-        or str(flow.get("order_flow_bias") or "").upper() in {"BUY_FLOW", "SELL_FLOW"}
+    strong_flow = (
+        flow_direction == direction
+        and (
+            volume_ratio >= 1.12
+            or _num(flow.get("flow_score"), _num(flow.get("intensity"), 0)) >= 58
+            or str(flow.get("order_flow_bias") or "").upper() in {"BUY_FLOW", "SELL_FLOW"}
+        )
+    ) or (
+        confirmation.get("valid")
+        and (confirmation.get("volume") or {}).get("strong")
+        and confirmation.get("direction") == direction
     )
     sweep = structure.get("liquidity_sweep") or {}
     sweep_ok = bool(sweep.get("detected") and sweep.get("direction") == direction)

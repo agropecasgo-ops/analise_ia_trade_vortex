@@ -84,12 +84,12 @@ def confirmation(direction="BUY", valid=True):
     }
 
 
-def layered(direction="BUY", generated=True, score=86):
+def layered(direction="BUY", generated=True, score=86, entry_price=105.0):
     return {
         "signal": {
             "generated": generated,
             "direction_code": direction if generated else "NEUTRAL",
-            "entry_price": 100.0,
+            "entry_price": entry_price,
             "stop_loss": 97.0,
             "take_profit_1": 105.0,
             "take_profit_2": 110.0,
@@ -235,6 +235,19 @@ class InstitutionalUnifiedEngineTests(unittest.TestCase):
         self.assertEqual(result["status"], "HIGH_PROBABILITY")
         self.assertEqual(result["direction"], "BUY")
         self.assertFalse(result["operationalContext"]["thresholds"]["requireStructure"])
+
+    def test_late_entry_blocks_high_probability(self):
+        result = self.analyze(
+            operational_mode="agressivo",
+            layered=layered("BUY", generated=True, score=80, entry_price=100.0),
+            volume={"signal": "BULLISH_VOLUME", "dominant_side": "BUYER"},
+            tape={"order_flow_bias": "BUY_FLOW"},
+        )
+
+        self.assertEqual(result["status"], "ENTRY_LATE")
+        self.assertEqual(result["entryTiming"]["label"], "Entrada atrasada")
+        self.assertFalse(result["entryTiming"]["entry_allowed"])
+        self.assertEqual(result["direction"], "NEUTRAL")
 
     def test_moderate_mode_keeps_balanced_confirmation(self):
         result = self.analyze(
