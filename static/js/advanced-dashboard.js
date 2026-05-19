@@ -605,6 +605,8 @@ class AdvancedDashboard {
         const confluenceAI = analysis.confluence_ai || {};
         const operationalSignal = analysis.operational_signal || {};
         const institutionalDecision = analysis.institutional_decision || {};
+        const entryTiming = analysis.entry_timing || institutionalDecision.entry_timing || {};
+        const entryStatus = analysis.entryStatus || institutionalDecision.entry_status || entryTiming.label;
         const institutionalRisk = institutionalDecision.risk_plan || {};
         const finalScore = analysis.final_score || {};
         const score = Number(institutionalDecision.score ?? operationalSignal.score ?? confluenceAI.score ?? analysis.operational_score ?? 0);
@@ -622,7 +624,7 @@ class AdvancedDashboard {
         this.setText('operationalScore', `${Math.round(gaugeScore)}/100`);
         this.setText('scoreValue', finalScore10.toFixed(1));
         this.setText('finalScoreValue', finalScore10.toFixed(1));
-        this.setText('scoreText', institutionalDecision.narrative || operationalSignal.status || confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
+        this.setText('scoreText', entryStatus || institutionalDecision.narrative || operationalSignal.status || confluenceAI.classification || finalScore.classification || (gaugeScore > 70 ? 'Alta qualidade' : gaugeScore > 50 ? 'Aguardando confirmacao' : 'Risco elevado'));
         this.updateGauge(gaugeScore);
 
         this.setText('mainSignal', finalDecision.label);
@@ -657,7 +659,7 @@ class AdvancedDashboard {
         this.setText('dashHistoryAssetA', analysis.symbol || this.currentAsset);
         this.setText('dashHistorySideA', signalSide);
         this.setText('dashHistorySideB', signalSide === 'Buy' ? 'Sell' : 'Buy');
-        this.setText('dashHistoryStatusA', finalDecision.label || '--');
+        this.setText('dashHistoryStatusA', entryStatus || finalDecision.label || '--');
         this.setText('dashHistoryStatusB', confluenceAI.classification || operationalSignal.status || '--');
         this.setText('dashHistoryStatusC', Number.isFinite(Number(rrValue)) ? 'Plano ativo' : 'Aguardando');
         this.setText('dashTotalAssetValue', priceText);

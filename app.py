@@ -864,6 +864,7 @@ def apply_layered_signal_to_live_status(status, layered_signal):
     confirmation = (layered_signal or {}).get("confirmation", {})
     generated = bool(signal.get("generated"))
     direction_code = signal.get("direction_code", "NEUTRAL")
+    entry_timing = signal.get("entry_timing") or {}
     score = int(ai_score.get("score", signal.get("score", 0)) or 0)
     risk_gate = signal.get("risk_gate") or {}
     blockers = list(dict.fromkeys(
@@ -880,16 +881,18 @@ def apply_layered_signal_to_live_status(status, layered_signal):
     status["confluence_score"] = score
     status["confidence"] = min(95, max(0, score))
     status["probable_direction"] = direction_code if generated else "NEUTRAL"
+    status["entry_timing"] = entry_timing or status.get("entry_timing")
+    status["entryStatus"] = signal.get("entry_status") or (entry_timing.get("label") if entry_timing else status.get("entryStatus"))
     status["reason"] = signal.get("reason") or (blockers[0] if blockers else "Aguardando camadas validarem o sinal.")
     status["confirmation_filters"] = blockers[:12]
     status["invalidations"] = blockers[:10] if not generated else []
     status["real_invalidations"] = [] if generated else blockers[:10]
 
     if generated:
-        state = "BUY_CONFIRMED" if direction_code == "BUY" else "SELL_CONFIRMED"
+        state = "EARLY_ENTRY" if entry_timing.get("status") == "ENTRY_EARLY" else "BUY_CONFIRMED" if direction_code == "BUY" else "SELL_CONFIRMED"
         status.update({
             "state": state,
-            "status": "COMPRA CONFIRMADA" if direction_code == "BUY" else "VENDA CONFIRMADA",
+            "status": entry_timing.get("label") if entry_timing.get("status") == "ENTRY_EARLY" else "COMPRA CONFIRMADA" if direction_code == "BUY" else "VENDA CONFIRMADA",
             "message": signal.get("reason"),
             "messages": [signal.get("reason"), f"Camada validada: {signal.get('validated_layer')}."] + status.get("messages", [])[:6],
             "entry_aggressive": signal.get("entry_price"),
@@ -900,6 +903,16 @@ def apply_layered_signal_to_live_status(status, layered_signal):
             "risk_reward": signal.get("risk_reward"),
         })
     else:
+        if entry_timing.get("status") == "ENTRY_LATE":
+            status.update({
+                "state": "LATE_ENTRY",
+                "status": entry_timing.get("label") or "Entrada atrasada",
+                "message": entry_timing.get("warning") or signal.get("reason"),
+                "messages": [entry_timing.get("warning") or signal.get("reason")] + blockers[:6] + status.get("messages", [])[:3],
+                "entry_aggressive": None,
+                "entry_conservative": None,
+            })
+            return status
         status.update({
             "state": "WAITING_CONFIRMATION",
             "status": "AGUARDANDO CAMADAS",
@@ -1677,6 +1690,14 @@ def get_analysis(symbol, timeframe):
             "legacy_indicators_role": "auxiliary_filter_only",
             "legacy_can_generate_signal": False,
         })
+        entry_timing = (layered_signal.get("signal") or {}).get("entry_timing") or {}
+        entry_status_label = (layered_signal.get("signal") or {}).get("entry_status") or entry_timing.get("label")
+        institutional_decision["entry_timing"] = entry_timing
+        institutional_decision["entry_status"] = entry_status_label
+        institutional_signal["entry_timing"] = entry_timing
+        institutional_signal["entry_status"] = entry_status_label
+        operational_signal["entry_timing"] = entry_timing
+        operational_signal["entry_status"] = entry_status_label
 
         response = {
             "success": True,
@@ -1707,6 +1728,8 @@ def get_analysis(symbol, timeframe):
             "institutional_decision": institutional_decision,
             "institutional_signal": institutional_signal,
             "layered_signal": layered_signal,
+            "entry_timing": entry_timing,
+            "entryStatus": entry_status_label,
             "institutional_risk": risk_plan,
             "institutional_narrative": institutional_narrative,
             "institutional_mtf": institutional_mtf,

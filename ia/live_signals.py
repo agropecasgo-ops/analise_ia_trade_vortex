@@ -15,6 +15,10 @@ from uuid import uuid4
 DISCLAIMER = "Analise educativa. Nao constitui recomendacao financeira. Toda operacao envolve risco."
 
 STATUS_WAITING = "Aguardando entrada"
+STATUS_EARLY = "Entrada antecipada"
+STATUS_CONFIRMED = "Entrada confirmada"
+STATUS_LATE = "Entrada atrasada"
+STATUS_NO_ENTRY = "Nao entrar"
 STATUS_TRIGGERED = "Entrada acionada"
 STATUS_RUNNING = "Em andamento"
 STATUS_BE = "Break Even ativado"
@@ -84,13 +88,21 @@ class SignalScoreService:
             reasons.append(f"Score {score:.0f} abaixo do minimo {min_score} no modo {operational_mode_label(mode)}.")
         if risk_gate and not risk_gate.get("allowed"):
             reasons.extend(risk_gate.get("blockers") or ["Bloqueio de risco ativo."])
-        if live_status.get("state") not in ["BUY_CONFIRMED", "SELL_CONFIRMED"]:
+        live_entry_timing = live_status.get("entry_timing") or live_status.get("entryTiming") or signal.get("entry_timing") or {}
+        live_entry_status = live_entry_timing.get("status")
+        if live_status.get("state") not in ["EARLY_ENTRY", "BUY_CONFIRMED", "SELL_CONFIRMED"] and live_entry_status not in {"ENTRY_EARLY", "ENTRY_CONFIRMED"}:
             reasons.append("Sem confirmacao final das camadas.")
         if live_status.get("layered_signal", {}).get("macro_context", {}).get("blocked"):
             reasons.extend(live_status["layered_signal"]["macro_context"].get("blockers", []))
         if live_status.get("layered_signal", {}).get("confirmation", {}).get("blockers"):
             reasons.extend(live_status["layered_signal"]["confirmation"].get("blockers", []))
         institutional = live_status.get("institutional_unified") or {}
+        entry_timing = live_entry_timing or (institutional.get("entryTiming") if institutional else {}) or {}
+        entry_status = entry_timing.get("status")
+        if entry_status in {"ENTRY_LATE", "NO_ENTRY"}:
+            reasons.append(entry_timing.get("warning") or entry_timing.get("reason") or "Timing institucional nao liberou entrada.")
+        if entry_status and entry_status not in {"ENTRY_EARLY", "ENTRY_CONFIRMED"}:
+            reasons.append("Status de entrada nao permite novo sinal.")
         if institutional:
             macro = institutional.get("macroContext") or {}
             volatility = macro.get("volatility") or {}
@@ -105,7 +117,7 @@ class SignalScoreService:
                 reasons.append("Noticia forte bloqueia novo sinal.")
             if risk and risk.get("allowed") is False:
                 reasons.append(risk.get("reason") or "Risco bloqueado pela IA institucional.")
-            if institutional.get("status") in {"DANGEROUS_MARKET", "NO_TRADE"}:
+            if institutional.get("status") in {"DANGEROUS_MARKET", "NO_TRADE", "ENTRY_LATE", "NO_ENTRY"}:
                 reasons.append("Status institucional bloqueia novo sinal.")
         return not reasons, list(dict.fromkeys(reasons))
 
@@ -259,7 +271,7 @@ class SignalEngine:
             "takeProfit2": risk["takeProfit2"],
             "takeProfitFinal": risk["takeProfitFinal"],
             "riskReward": risk["riskReward"],
-            "status": STATUS_WAITING,
+            "status": self._initial_status(live_status, raw_signal),
             "reasons": [item for item in dict.fromkeys(reasons) if item],
             "timeframe": live_status.get("timeframe"),
             "createdAt": _now(),
@@ -277,6 +289,8 @@ class SignalEngine:
             "operationalMode": normalize_operational_mode(live_status.get("operationalMode")),
             "operationalModeLabel": operational_mode_label(live_status.get("operationalMode")),
             "minScore": operational_mode_min_score(live_status.get("operationalMode")),
+            "entryTiming": raw_signal.get("entry_timing") or live_status.get("entry_timing") or live_status.get("entryTiming"),
+            "entryStatus": raw_signal.get("entry_status") or live_status.get("entryStatus"),
         }
         signal.update({
             "entry": signal["entryPrice"],
@@ -365,6 +379,8 @@ class SignalEngine:
             "operationalMode": normalize_operational_mode(live_status.get("operationalMode")),
             "operationalModeLabel": operational_mode_label(live_status.get("operationalMode")),
             "minScore": operational_mode_min_score(live_status.get("operationalMode")),
+            "entryTiming": live_status.get("entry_timing") or live_status.get("entryTiming"),
+            "entryStatus": live_status.get("entryStatus"),
         }
 
     def list_active(self) -> list[dict[str, Any]]:
@@ -396,6 +412,17 @@ class SignalEngine:
             return "0.00%"
         value = (entry - price) / entry * 100 if signal.get("direction") == "SELL" else (price - entry) / entry * 100
         return f"{value:.2f}%"
+
+    def _initial_status(self, live_status: dict[str, Any], raw_signal: dict[str, Any]) -> str:
+        timing = raw_signal.get("entry_timing") or live_status.get("entry_timing") or live_status.get("entryTiming") or {}
+        status = timing.get("status")
+        if status == "ENTRY_EARLY":
+            return STATUS_EARLY
+        if status == "ENTRY_CONFIRMED":
+            return STATUS_CONFIRMED
+        if status == "ENTRY_LATE":
+            return STATUS_LATE
+        return STATUS_WAITING
 
 
 class LiveSignalManager(SignalEngine):

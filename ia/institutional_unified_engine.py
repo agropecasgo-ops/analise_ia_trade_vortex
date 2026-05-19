@@ -15,6 +15,7 @@ import pandas as pd
 
 try:
     from .confirmation_engine import ConfirmationEngine
+    from .entry_timing_engine import ENTRY_CONFIRMED, ENTRY_EARLY, ENTRY_LATE, NO_ENTRY, build_entry_timing
     from .layered_signal_engine import build_layered_signal
     from .macro_context_engine import MacroContextEngine
     from .market_structure_engine import MarketStructureEngine
@@ -23,6 +24,11 @@ except Exception:  # pragma: no cover - protected by runtime safe calls
     MacroContextEngine = None
     MarketStructureEngine = None
     build_layered_signal = None
+    build_entry_timing = None
+    ENTRY_EARLY = "ENTRY_EARLY"
+    ENTRY_CONFIRMED = "ENTRY_CONFIRMED"
+    ENTRY_LATE = "ENTRY_LATE"
+    NO_ENTRY = "NO_ENTRY"
 
 try:
     from .narrative_engine import build_operational_narrative
@@ -45,7 +51,7 @@ except Exception:  # pragma: no cover - protected by runtime safe calls
 
 
 VALID_DIRECTIONS = {"BUY", "SELL", "NEUTRAL"}
-VALID_STATUSES = {"HIGH_PROBABILITY", "WAIT_CONFIRMATION", "DANGEROUS_MARKET", "NO_TRADE"}
+VALID_STATUSES = {"HIGH_PROBABILITY", "WAIT_CONFIRMATION", "DANGEROUS_MARKET", "NO_TRADE", ENTRY_EARLY, ENTRY_CONFIRMED, ENTRY_LATE, NO_ENTRY}
 OPERATIONAL_MODES = {
     "conservador": {
         "label": "Conservador",
@@ -214,15 +220,19 @@ class InstitutionalUnifiedEngine:
         )
         trade_plan = self._trade_plan(decision["direction"], layered, structure)
         risk = self._risk(decision, trade_plan)
-        status = self._status(decision, risk, macro, structure, confirmation, smc or smart_money)
+        entry_timing = self._entry_timing(decision, trade_plan, risk, macro, structure, confirmation, layered, volume, tape)
+        status = self._status(decision, risk, macro, structure, confirmation, smc or smart_money, entry_timing)
         if status in {"NO_TRADE", "DANGEROUS_MARKET"}:
             decision["direction"] = "NEUTRAL"
             trade_plan = self._empty_trade_plan(
                 "Aguardar nova confluencia institucional.",
                 self._first_reason(risk.get("rejections"), structure.get("blockers"), confirmation.get("blockers")),
             )
+        if entry_timing.get("late"):
+            trade_plan["entryCondition"] = entry_timing.get("warning") or entry_timing.get("reason")
+            trade_plan["cancelCondition"] = "Nao perseguir preco apos deslocamento excessivo do ponto ideal."
 
-        timing = self._timing(confirmation, layered, status)
+        timing = self._timing(confirmation, layered, status, entry_timing)
         explanation = self._explanation(decision, status, macro, structure, confirmation, smc or smart_money, risk)
         narrative = self._narrative(decision, smc or smart_money, tape, risk, explanation)
 
@@ -239,6 +249,7 @@ class InstitutionalUnifiedEngine:
             trade_plan=trade_plan,
             risk=risk,
             timing=timing,
+            entry_timing=entry_timing,
             ai_explanation=narrative,
         )
 
@@ -504,6 +515,36 @@ class InstitutionalUnifiedEngine:
         risk["educationalOnly"] = True
         return risk
 
+    def _entry_timing(
+        self,
+        decision: dict[str, Any],
+        trade_plan: dict[str, Any],
+        risk: dict[str, Any],
+        macro: dict[str, Any],
+        structure: dict[str, Any],
+        confirmation: dict[str, Any],
+        layered: dict[str, Any],
+        volume: dict[str, Any],
+        tape: dict[str, Any],
+    ) -> dict[str, Any]:
+        if build_entry_timing is None:
+            return {"status": NO_ENTRY, "label": "Nao entrar", "entry_allowed": False, "reason": "Timing institucional indisponivel."}
+        return build_entry_timing(
+            self.df,
+            decision.get("core_direction") if decision.get("core_direction") in {"BUY", "SELL"} else decision.get("direction"),
+            timeframe=self.timeframe,
+            score=decision.get("score", 0),
+            min_score=self.thresholds["min_score"],
+            trade_plan=trade_plan,
+            risk=risk,
+            structure=structure,
+            confirmation=confirmation,
+            volume=volume,
+            flow=tape,
+            macro=macro,
+            layered_signal=(layered.get("signal") or {}),
+        )
+
     def _status(
         self,
         decision: dict[str, Any],
@@ -512,7 +553,9 @@ class InstitutionalUnifiedEngine:
         structure: dict[str, Any],
         confirmation: dict[str, Any],
         smc: dict[str, Any],
+        entry_timing: dict[str, Any] | None = None,
     ) -> str:
+        entry_timing = entry_timing or {}
         smc_false_breakout = (smc.get("false_breakout") or {}).get("detected")
         confirmation_false_breakout = (confirmation.get("false_breakout") or {}).get("detected")
         dangerous = bool(smc_false_breakout or confirmation_false_breakout)
@@ -529,14 +572,23 @@ class InstitutionalUnifiedEngine:
             return "HIGH_PROBABILITY"
         return "WAIT_CONFIRMATION"
 
-    def _timing(self, confirmation: dict[str, Any], layered: dict[str, Any], status: str) -> dict[str, Any]:
+    def _timing(self, confirmation: dict[str, Any], layered: dict[str, Any], status: str, entry_timing: dict[str, Any] | None = None) -> dict[str, Any]:
         signal = layered.get("signal") or {}
+        entry_timing = entry_timing or {}
         return {
-            "confirmed": status == "HIGH_PROBABILITY",
+            "confirmed": status in {"HIGH_PROBABILITY", ENTRY_CONFIRMED},
+            "entryStatus": entry_timing.get("status"),
+            "entryStatusLabel": entry_timing.get("label"),
+            "earlyEntry": entry_timing.get("status") == ENTRY_EARLY,
+            "lateEntry": entry_timing.get("status") == ENTRY_LATE,
+            "doNotChase": bool(entry_timing.get("do_not_chase")),
+            "idealEntry": entry_timing.get("ideal_entry"),
+            "movementFromIdealAtr": entry_timing.get("movement_from_ideal_atr"),
+            "candleProgress": entry_timing.get("candle_progress"),
             "layer": "confirmation",
             "validatedLayer": signal.get("validated_layer"),
             "confirmation": confirmation,
-            "reason": signal.get("reason") or self._first_reason(confirmation.get("blockers")) or "Aguardando timing institucional.",
+            "reason": entry_timing.get("reason") or signal.get("reason") or self._first_reason(confirmation.get("blockers")) or "Aguardando timing institucional.",
         }
 
     def _market_structure_contract(self, structure: dict[str, Any], smc: dict[str, Any]) -> dict[str, Any]:
@@ -585,6 +637,12 @@ class InstitutionalUnifiedEngine:
                 f"IA institucional encontrou confluencia {decision['direction']} com score {decision['score']:.0f}. "
                 "Ainda assim, nao ha promessa de acerto; o plano depende de stop, alvo e confirmacao do mercado."
             )
+        if status == ENTRY_EARLY:
+            return "Entrada antecipada liberada por fluxo, rompimento/sweep, candle ganhando forca e MTF alinhado; risco preservado."
+        if status == ENTRY_CONFIRMED:
+            return "Entrada confirmada por confluencia institucional, fluxo, candle e gestao de risco."
+        if status == ENTRY_LATE:
+            return "Entrada atrasada: o preco ja se deslocou demais do ponto ideal. Nao perseguir preco."
         reason = self._first_reason(
             risk.get("rejections"),
             macro.get("blockers"),
@@ -627,8 +685,10 @@ class InstitutionalUnifiedEngine:
         trade_plan: dict[str, Any],
         risk: dict[str, Any],
         timing: dict[str, Any],
+        entry_timing: dict[str, Any] | None = None,
         ai_explanation: str,
     ) -> dict[str, Any]:
+        entry_timing = entry_timing or {}
         return {
             "asset": self.asset,
             "assetType": self.asset_type,
@@ -663,6 +723,8 @@ class InstitutionalUnifiedEngine:
             "tradePlan": trade_plan,
             "risk": risk,
             "timing": timing,
+            "entryTiming": entry_timing,
+            "entryStatus": entry_timing.get("label") or timing.get("entryStatusLabel"),
             "news": self.news,
             "aiExplanation": ai_explanation,
             "layersUsed": list(dict.fromkeys(self.layers_used)),

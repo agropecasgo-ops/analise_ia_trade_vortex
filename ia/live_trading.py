@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from .analysis import RiskManagement
 from .candle_reading_engine import build_candle_reading
+from .entry_timing_engine import ENTRY_CONFIRMED, ENTRY_EARLY, ENTRY_LATE, NO_ENTRY, build_entry_timing
 from .elliott_wave import read_elliott_wave
 from .smart_money import analyze_smart_money
 from .tape_reading import read_tape
@@ -30,6 +31,8 @@ class LiveTradingIA:
         "HIGH_RISK": "ALTO RISCO",
         "INVALIDATED": "ENTRADA INVALIDADA",
         "WAIT_NEXT_CANDLE": "AGUARDAR NOVO CANDLE",
+        "EARLY_ENTRY": "ENTRADA ANTECIPADA",
+        "LATE_ENTRY": "ENTRADA ATRASADA / NAO PERSEGUIR PRECO",
     }
 
     def __init__(self, candles, symbol, timeframe, ticker=None, operational_mode="moderado", min_score=65):
@@ -104,10 +107,18 @@ class LiveTradingIA:
         confirmation_filters = self._confirmation_filters(technical, volume, smc, levels, wyckoff, elliott_wave, tape_reading, candle_reading)
         confirmations = self._confirmations(technical, volume, smc, wyckoff, elliott_wave, tape_reading, candle_reading)
         state = self._state(confluence_score, direction, technical, volume, smc, levels, invalidations, candle_reading)
+        entry_timing = self._entry_timing(direction, confluence_score, levels, volume, tape_reading, smc)
+        if entry_timing.get("status") == ENTRY_LATE:
+            state = "LATE_ENTRY"
+            invalidations.insert(0, entry_timing.get("warning") or entry_timing.get("reason"))
+        elif entry_timing.get("status") == ENTRY_EARLY:
+            state = "EARLY_ENTRY"
+        elif entry_timing.get("status") == ENTRY_CONFIRMED and state in ["AGGRESSIVE_ENTRY", "CONSERVATIVE_ENTRY", "WAITING_CONFIRMATION"]:
+            state = "BUY_CONFIRMED" if direction == "BUY" else "SELL_CONFIRMED" if direction == "SELL" else state
         messages = self._messages(state, confluence_score, direction, technical, volume, smc, confirmations, confirmation_filters, wyckoff, elliott_wave, tape_reading, candle_reading)
         confidence = int(max(10, min(95, confluence_score * 0.72 + len(confirmations) * 3 - len(invalidations) * 5 - len(confirmation_filters) * 1.5)))
         min_confidence = max(50, min(80, self.min_score))
-        if state in ["BUY_CONFIRMED", "SELL_CONFIRMED"] and (confidence < min_confidence or confluence_score < self.min_score or not candle_reading.get("setup_validated")):
+        if state in ["BUY_CONFIRMED", "SELL_CONFIRMED"] and entry_timing.get("status") != ENTRY_CONFIRMED and (confidence < min_confidence or confluence_score < self.min_score or not candle_reading.get("setup_validated")):
             state = "WAITING_CONFIRMATION"
             messages.insert(0, candle_reading.get("blockers", ["Aguardando candle gatilho."])[0])
 
@@ -118,7 +129,7 @@ class LiveTradingIA:
             "operationalMode": self.operational_mode,
             "minScore": self.min_score,
             "state": state,
-            "status": self.STATES[state],
+            "status": entry_timing.get("label") if state in ["EARLY_ENTRY", "LATE_ENTRY"] else self.STATES[state],
             "message": messages[0],
             "messages": messages[:8],
             "confluence_score": confluence_score,
@@ -127,7 +138,7 @@ class LiveTradingIA:
             "trend_strength": trend_strength,
             "volume_strength": volume_strength,
             "risk_reward": levels.get("risk_reward"),
-            "entry_aggressive": levels.get("entry_aggressive") if state in ["AGGRESSIVE_ENTRY", "BUY_CONFIRMED", "SELL_CONFIRMED"] else None,
+            "entry_aggressive": levels.get("entry_aggressive") if state in ["EARLY_ENTRY", "AGGRESSIVE_ENTRY", "BUY_CONFIRMED", "SELL_CONFIRMED"] else None,
             "entry_conservative": levels.get("entry_conservative") if state in ["CONSERVATIVE_ENTRY", "BUY_CONFIRMED", "SELL_CONFIRMED"] else None,
             "stop_loss": levels.get("stop_loss"),
             "take_profit": levels.get("take_profit_1"),
@@ -144,6 +155,8 @@ class LiveTradingIA:
             "current_candle": self._candle_payload(self.current),
             "previous_candle": self._candle_payload(self.previous),
             "candle_reading": candle_reading,
+            "entry_timing": entry_timing,
+            "entryStatus": entry_timing.get("label"),
             "candle_panel": candle_reading.get("panel", {}),
             "candle_sequence": candle_reading.get("sequence", {}),
             "last_candle_readings": candle_reading.get("last_candles", []),
@@ -362,6 +375,38 @@ class LiveTradingIA:
             return "WAIT_NEXT_CANDLE"
         return "WAITING_CONFIRMATION"
 
+    def _entry_timing(self, direction, score, levels, volume, tape_reading, smc):
+        structure = {
+            "direction": direction,
+            "valid": direction in ["BUY", "SELL"],
+            "liquidity_sweep": smc.get("liquidity_sweep", {}),
+            "bos": (smc.get("structure") or {}).get("bos") if isinstance((smc.get("structure") or {}).get("bos"), dict) else {},
+            "institutional_zone": smc.get("relevant_order_block") or smc.get("relevant_fvg") or {},
+        }
+        if not structure["bos"] and smc.get("liquidity_zone"):
+            structure["bos"] = {"detected": False, "direction": direction, "level": smc.get("liquidity_zone", {}).get("price")}
+        confirmation = {
+            "valid": direction in ["BUY", "SELL"] and score >= self.min_score,
+            "volume": {"strong": float(volume.get("metrics", {}).get("volume_ratio", 1)) >= 1.2},
+        }
+        return build_entry_timing(
+            self.df,
+            direction,
+            timeframe=self.timeframe,
+            score=score,
+            min_score=self.min_score,
+            trade_plan={
+                "entry": levels.get("entry_aggressive"),
+                "riskReward": levels.get("risk_reward"),
+            },
+            risk={"allowed": float(levels.get("risk_reward") or 0) >= 1},
+            structure=structure,
+            confirmation=confirmation,
+            volume=volume,
+            flow=tape_reading,
+            macro={"direction": direction, "blocked": False},
+        )
+
     def _confirmations(self, technical, volume, smc, wyckoff, elliott_wave, tape_reading, candle_reading=None):
         items = []
         items.extend(technical.get("confirmations", [])[:4])
@@ -479,6 +524,8 @@ class LiveTradingIA:
             "HIGH_RISK": "Alto risco. Risco/retorno nao compensa.",
             "INVALIDATED": "Cenario invalidado. Aguardar novo setup.",
             "WAIT_NEXT_CANDLE": "Aguardar novo candle.",
+            "EARLY_ENTRY": "Entrada antecipada: inicio do movimento detectado com fluxo e risco validos.",
+            "LATE_ENTRY": "Entrada atrasada. Nao perseguir preco.",
         }
         if state in state_messages:
             messages.insert(0, state_messages[state])

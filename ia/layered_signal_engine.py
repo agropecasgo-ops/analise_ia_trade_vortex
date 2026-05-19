@@ -13,6 +13,7 @@ import pandas as pd
 
 from .ai_score_engine import AIScoreEngine
 from .confirmation_engine import ConfirmationEngine
+from .entry_timing_engine import ENTRY_CONFIRMED, ENTRY_EARLY, ENTRY_LATE, build_entry_timing
 from .macro_context_engine import MacroContextEngine
 from .market_structure_engine import MarketStructureEngine
 
@@ -85,20 +86,56 @@ class LayeredSignalEngine:
         if not structure.get("valid") or structure.get("direction") not in ["BUY", "SELL"]:
             reason = (structure.get("blockers") or ["Estrutura nao aprovada."])[0]
             return self._empty_signal(reason, score, direction)
-        if not confirmation.get("valid") or confirmation.get("direction") not in ["BUY", "SELL"]:
-            reason = (confirmation.get("blockers") or ["Confirmacao nao aprovada."])[0]
-            return self._empty_signal(reason, score, direction)
-        if not score.get("approved") or direction not in ["BUY", "SELL"]:
+        if direction not in ["BUY", "SELL"]:
             reason = score.get("blockers", ["Score insuficiente para sinal."])[0]
             return self._empty_signal(reason, score, direction)
 
         entry = float(entry_df["close"].iloc[-1])
         levels = self._levels(entry_df, direction, structure, entry)
         risk = self._risk_gate(levels)
+        timing = build_entry_timing(
+            entry_df,
+            direction,
+            timeframe=self.entry_timeframe,
+            score=score.get("score", 0),
+            min_score=self.min_score,
+            trade_plan={
+                "entry": levels.get("entry_price"),
+                "riskReward": levels.get("risk_reward"),
+            },
+            risk={"allowed": risk.get("allowed"), "reason": (risk.get("blockers") or [None])[0]},
+            structure=structure,
+            confirmation=confirmation,
+            volume=(score.get("legacy_filters") or {}).get("volume") or (self.legacy_filters.get("volume") or {}),
+            flow=(score.get("legacy_filters") or {}).get("tape_reading") or (self.legacy_filters.get("tape_reading") or {}),
+            macro=macro,
+            layered_signal={"generated": True, "risk_reward": levels.get("risk_reward")},
+        )
         if not risk["allowed"]:
             reason = risk["blockers"][0]
             blocked = self._empty_signal(reason, score, direction)
             blocked["risk_gate"] = risk
+            blocked["entry_timing"] = timing
+            blocked["entry_status"] = timing.get("label")
+            return blocked
+        if timing.get("status") == ENTRY_LATE:
+            blocked = self._empty_signal(timing.get("warning") or timing.get("reason"), score, direction)
+            blocked["risk_gate"] = {**risk, "allowed": False, "blockers": [timing.get("warning") or timing.get("reason")]}
+            blocked["entry_timing"] = timing
+            blocked["entry_status"] = timing.get("label")
+            return blocked
+        confirmed_by_layers = bool(score.get("approved") and confirmation.get("valid"))
+        if timing.get("status") not in {ENTRY_EARLY, ENTRY_CONFIRMED} and not confirmed_by_layers:
+            block_reason = (
+                (confirmation.get("blockers") or [None])[0]
+                or timing.get("reason")
+                or (score.get("blockers") or [None])[0]
+                or "Timing institucional nao liberou entrada."
+            )
+            blocked = self._empty_signal(block_reason, score, direction)
+            blocked["risk_gate"] = {**risk, "allowed": False, "blockers": [block_reason]}
+            blocked["entry_timing"] = timing
+            blocked["entry_status"] = timing.get("label")
             return blocked
         reason = self._reason(macro, structure, confirmation, score)
         return {
@@ -116,6 +153,9 @@ class LayeredSignalEngine:
             "validated_layer": "ai_score",
             "validated_layers": ["macro_context", "market_structure", "confirmation", "ai_score"],
             "risk_gate": risk,
+            "entry_timing": timing,
+            "entry_status": timing.get("label"),
+            "entry_status_code": timing.get("status"),
         }
 
     def _empty_signal(self, reason: str, score: dict[str, Any], direction: str = "NEUTRAL") -> dict[str, Any]:

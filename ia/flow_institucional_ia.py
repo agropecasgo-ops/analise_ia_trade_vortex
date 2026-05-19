@@ -79,6 +79,7 @@ class FlowInstitucionalIA:
 
         trade_plan = self.analysis.get("tradePlan") or {}
         timing = self.analysis.get("timing") or {}
+        entry_timing = self.analysis.get("entryTiming") or {}
         risk = self.analysis.get("risk") or {}
         direction = self.analysis.get("direction", "NEUTRAL")
 
@@ -92,12 +93,15 @@ class FlowInstitucionalIA:
             "trend": self.trend,
             "entry_allowed": self.entry_allowed,
             "status": self.analysis.get("status", "WAIT_CONFIRMATION"),
+            "entry_status": entry_timing.get("label") or self.analysis.get("entryStatus"),
+            "entry_timing": entry_timing,
+            "do_not_chase": bool(entry_timing.get("do_not_chase")),
             "entry": trade_plan.get("entry"),
             "stop_loss": trade_plan.get("stopLoss"),
             "take_profit_1": trade_plan.get("takeProfit1"),
             "take_profit_2": trade_plan.get("takeProfit2"),
             "risk_reward": trade_plan.get("riskReward"),
-            "reason": timing.get("reason") or self.analysis.get("aiExplanation"),
+            "reason": entry_timing.get("reason") or timing.get("reason") or self.analysis.get("aiExplanation"),
             "risk": risk,
             "analysis": self.analysis,
         }
@@ -110,9 +114,10 @@ class FlowInstitucionalIA:
         self.flow_strength = self._flow_strength(analysis)
         self.trend = self._trend_label(analysis)
         self.entry_allowed = bool(
-            analysis.get("status") == "HIGH_PROBABILITY"
+            analysis.get("status") in {"HIGH_PROBABILITY", "ENTRY_EARLY", "ENTRY_CONFIRMED"}
             and self.direction in {"BUY", "SELL"}
             and (analysis.get("risk") or {}).get("allowed")
+            and not (analysis.get("entryTiming") or {}).get("do_not_chase")
         )
 
     def _attach_order_flow_context(self, df: pd.DataFrame) -> None:

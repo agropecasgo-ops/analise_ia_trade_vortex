@@ -166,7 +166,7 @@ class RealtimeSignalsPage {
                 </div>
                 <div class="signal-direction-row">
                     <strong>${signal.direction === 'BUY' ? 'COMPRA' : 'VENDA'}</strong>
-                    <span>${this.escape(signal.status || '--')}</span>
+                    <span>${this.escape(signal.entryStatus || signal.status || '--')}</span>
                 </div>
                 <div class="signal-level-grid">
                     <div><span>Entrada</span><strong>${this.price(signal.entryPrice)}</strong></div>
