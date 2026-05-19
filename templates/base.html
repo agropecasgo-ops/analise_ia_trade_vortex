@@ -52,6 +52,10 @@
                     <i class="fas fa-building-columns"></i>
                     <span>Análise IA Institucional</span>
                 </a>
+                <a href="{{ url_for('scenario_antecipado') }}" class="nav-item {% if request.path == '/cenario-antecipado' %}active{% endif %}" data-page="cenario-antecipado">
+                    <i class="fas fa-compass"></i>
+                    <span>Cenário Antecipado IA</span>
+                </a>
                 <a href="/analise-fluxo" class="nav-item {% if request.path == '/analise-fluxo' %}active{% endif %}" data-page="analise-fluxo">
                     <i class="fas fa-diagram-project"></i>
                     <span>Fluxo Institucional IA</span>

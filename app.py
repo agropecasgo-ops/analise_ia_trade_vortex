@@ -1047,6 +1047,12 @@ def institutional():
     return render_template("institutional.html")
 
 
+@app.route("/cenario-antecipado")
+@login_required
+def scenario_antecipado():
+    return render_template("scenario_antecipado.html")
+
+
 @app.route("/analise-fluxo")
 @login_required
 def analise_fluxo():
