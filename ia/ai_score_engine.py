@@ -22,7 +22,9 @@ class AIScoreEngine:
         structure: dict[str, Any],
         confirmation: dict[str, Any],
         legacy_filters: dict[str, Any] | None = None,
+        min_score: int = 80,
     ) -> dict[str, Any]:
+        min_score = self._normalize_min_score(min_score)
         components = {
             "trend_aligned": bool(macro_context.get("trend", {}).get("aligned") and macro_context.get("trend", {}).get("confirmed_by_m5")),
             "liquidity_sweep": bool(structure.get("liquidity_sweep", {}).get("detected")),
@@ -40,28 +42,35 @@ class AIScoreEngine:
         if confirmation.get("blockers"):
             blockers.extend(confirmation.get("blockers", []))
         blockers.extend(legacy["blockers"])
-        if base_score < 80:
-            blockers.append(f"Score base por camadas {base_score}/90 abaixo do minimo 80.")
-        if score < 80:
-            blockers.append(f"Score {score}/100 abaixo do minimo 80.")
+        if base_score < min_score:
+            blockers.append(f"Score base por camadas {base_score}/90 abaixo do minimo {min_score}.")
+        if score < min_score:
+            blockers.append(f"Score {score}/100 abaixo do minimo {min_score}.")
         return {
             "layer": "ai_score",
             "score": score,
             "base_score": base_score,
             "max_score": sum(self.WEIGHTS.values()),
-            "threshold": 80,
+            "threshold": min_score,
             "components": components,
             "weights": self.WEIGHTS,
             "legacy_filters": legacy,
             "approved": (
-                base_score >= 80
-                and score >= 80
+                base_score >= min_score
+                and score >= min_score
                 and not macro_context.get("blocked")
                 and confirmation.get("valid")
                 and not legacy["blockers"]
             ),
             "blockers": list(dict.fromkeys(blockers)),
         }
+
+    def _normalize_min_score(self, value: Any) -> int:
+        try:
+            score = int(value)
+        except (TypeError, ValueError):
+            score = 80
+        return max(0, min(100, score))
 
     def _legacy_filter_effect(self, legacy_filters: dict[str, Any], layered_direction: str) -> dict[str, Any]:
         confirmations = []

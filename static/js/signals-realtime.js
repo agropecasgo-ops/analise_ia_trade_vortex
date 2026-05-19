@@ -5,6 +5,9 @@ class RealtimeSignalsPage {
         this.timeframe = '15m';
         this.directionFilter = 'all';
         this.statusFilter = 'all';
+        this.operationalMode = this.currentOperationalMode();
+        this.minScore = this.thresholdForMode(this.operationalMode);
+        this.operationalModeLabel = this.labelForMode(this.operationalMode);
         this.active = [];
         this.history = [];
         this.pollTimer = null;
@@ -45,6 +48,12 @@ class RealtimeSignalsPage {
             this.statusFilter = event.target.value;
             this.render();
         });
+        window.FinanceOperationalMode?.onChange?.((mode) => {
+            this.operationalMode = this.currentOperationalMode(mode);
+            this.minScore = this.thresholdForMode(this.operationalMode);
+            this.operationalModeLabel = this.labelForMode(this.operationalMode);
+            this.refresh();
+        });
     }
 
     async loadAssets() {
@@ -66,8 +75,12 @@ class RealtimeSignalsPage {
 
     async refresh(renderLoading = true) {
         if (renderLoading) this.setText('signalsConnection', 'Atualizando');
-        const response = await fetch(`/api/signals/realtime?symbol=${encodeURIComponent(this.symbol)}&timeframe=${encodeURIComponent(this.timeframe)}`);
+        this.operationalMode = this.currentOperationalMode();
+        const response = await fetch(`/api/signals/realtime?symbol=${encodeURIComponent(this.symbol)}&timeframe=${encodeURIComponent(this.timeframe)}&operationalMode=${encodeURIComponent(this.operationalMode)}`);
         const data = await response.json();
+        this.operationalMode = data.operationalMode || this.operationalMode;
+        this.minScore = Number(data.minScore || data.signal?.minScore || this.thresholdForMode(this.operationalMode));
+        this.operationalModeLabel = data.operationalModeLabel || data.signal?.operationalModeLabel || this.labelForMode(this.operationalMode);
         this.active = data.active || [];
         this.history = data.history || [];
         this.setText('signalsActiveCount', data.stats?.active_count ?? this.active.length);
@@ -125,7 +138,7 @@ class RealtimeSignalsPage {
         const grid = document.getElementById(id);
         if (!grid) return;
         if (!signals.length) {
-            grid.innerHTML = `<div class="live-empty-signal">${compact ? 'Nenhum sinal finalizado.' : 'Aguardando score acima de 80...'}</div>`;
+            grid.innerHTML = `<div class="live-empty-signal">${compact ? 'Nenhum sinal finalizado.' : this.emptySignalMessage()}</div>`;
             return;
         }
         if (compact) {
@@ -227,6 +240,24 @@ class RealtimeSignalsPage {
 
     clock() {
         return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    currentOperationalMode(value) {
+        return window.FinanceOperationalMode?.normalize
+            ? window.FinanceOperationalMode.normalize(value || window.FinanceOperationalMode.get?.())
+            : ['conservador', 'moderado', 'agressivo'].includes(value) ? value : 'moderado';
+    }
+
+    thresholdForMode(mode) {
+        return { conservador: 80, moderado: 65, agressivo: 50 }[this.currentOperationalMode(mode)] || 65;
+    }
+
+    labelForMode(mode) {
+        return { conservador: 'Conservador', moderado: 'Moderado', agressivo: 'Agressivo' }[this.currentOperationalMode(mode)] || 'Moderado';
+    }
+
+    emptySignalMessage() {
+        return `Aguardando score acima de ${this.minScore} no modo ${this.operationalModeLabel}`;
     }
 
     setText(id, value) {

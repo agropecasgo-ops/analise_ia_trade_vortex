@@ -65,6 +65,15 @@ def confirmation(direction="BUY", *, valid=True, strong_volume=True):
 
 class LayeredSignalRuleTests(unittest.TestCase):
     def analyze(self, *, direction="BUY", macro_ctx=None, market_structure=None, confirm=None, legacy=None):
+        return self.analyze_with_min_score(
+            direction=direction,
+            macro_ctx=macro_ctx,
+            market_structure=market_structure,
+            confirm=confirm,
+            legacy=legacy,
+        )
+
+    def analyze_with_min_score(self, *, direction="BUY", min_score=80, macro_ctx=None, market_structure=None, confirm=None, legacy=None):
         macro_ctx = macro_ctx if macro_ctx is not None else macro(direction)
         market_structure = market_structure if market_structure is not None else structure(direction)
         confirm = confirm if confirm is not None else confirmation(direction)
@@ -79,6 +88,7 @@ class LayeredSignalRuleTests(unittest.TestCase):
                 {"1m": candles(direction=direction), "5m": candles(direction=direction), "15m": candles(direction=direction), "1h": candles(direction=direction)},
                 "1m",
                 legacy_filters=legacy,
+                min_score=min_score,
             )
 
     def test_valid_buy_signal_requires_all_layers_and_score_80(self):
@@ -134,6 +144,18 @@ class LayeredSignalRuleTests(unittest.TestCase):
 
         self.assertFalse(result["signal"]["generated"])
         self.assertLess(result["ai_score"]["base_score"], 80)
+
+    def test_mode_min_score_can_release_layered_signal_without_indicator_only_generation(self):
+        result = self.analyze_with_min_score(
+            direction="BUY",
+            min_score=65,
+            market_structure={**structure("BUY"), "liquidity_sweep": {"detected": False}},
+        )
+
+        self.assertTrue(result["signal"]["generated"])
+        self.assertEqual(result["ai_score"]["threshold"], 65)
+        self.assertEqual(result["legacy_filters"]["role"], "auxiliary_filter_only")
+        self.assertFalse(result["legacy_filters"]["can_generate_signal"])
 
     def test_sideways_market_blocks_signal(self):
         result = self.analyze(

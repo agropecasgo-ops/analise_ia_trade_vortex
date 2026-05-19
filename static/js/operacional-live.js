@@ -54,6 +54,7 @@ class OperacionalLiveDashboard {
         document.getElementById('opVoiceToggle')?.addEventListener('click', () => this.toggleVoice());
         document.getElementById('opLiveVoiceToggle')?.addEventListener('click', () => this.toggleVoice());
         document.getElementById('opVoiceStop')?.addEventListener('click', () => speechSynthesis.cancel());
+        window.FinanceOperationalMode?.onChange?.(() => this.reset(true));
         window.addEventListener('resize', () => this.resizeChart());
     }
 
@@ -108,7 +109,7 @@ class OperacionalLiveDashboard {
 
     async loadCandles(fit = false) {
         try {
-            const response = await fetch(`/api/operacional/candles/${this.symbol}/${this.timeframe}?limit=260`);
+            const response = await fetch(`/api/operacional/candles/${this.symbol}/${this.timeframe}?limit=260&operationalMode=${encodeURIComponent(this.operationalMode())}`);
             const data = await response.json();
             if (!data.success) throw new Error(data.error || 'candles_unavailable');
             const candles = Array.isArray(data.candles) ? data.candles : [];
@@ -251,7 +252,7 @@ class OperacionalLiveDashboard {
         this.statusController?.abort();
         this.statusController = new AbortController();
         try {
-            const response = await fetch(`/api/operacional-live/status/${this.symbol}/${this.timeframe}?reason=${encodeURIComponent(reason)}`, {
+            const response = await fetch(`/api/operacional-live/status/${this.symbol}/${this.timeframe}?reason=${encodeURIComponent(reason)}&operationalMode=${encodeURIComponent(this.operationalMode())}`, {
                 signal: this.statusController.signal,
             });
             const status = await response.json();
@@ -295,9 +296,13 @@ class OperacionalLiveDashboard {
     }
 
     async fetchSignals() {
-        const response = await fetch(`/api/operacional-live/signals/${this.symbol}/${this.timeframe}`);
+        const response = await fetch(`/api/operacional-live/signals/${this.symbol}/${this.timeframe}?operationalMode=${encodeURIComponent(this.operationalMode())}`);
         const data = await response.json();
         this.renderSignals(data.signals || []);
+    }
+
+    operationalMode() {
+        return window.FinanceOperationalMode?.get?.() || 'moderado';
     }
 
     renderSignals(signals) {

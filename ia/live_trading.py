@@ -32,13 +32,15 @@ class LiveTradingIA:
         "WAIT_NEXT_CANDLE": "AGUARDAR NOVO CANDLE",
     }
 
-    def __init__(self, candles, symbol, timeframe, ticker=None):
+    def __init__(self, candles, symbol, timeframe, ticker=None, operational_mode="moderado", min_score=65):
         self.df = candles.copy().dropna(subset=["open", "high", "low", "close", "volume"])
         if len(self.df) < 80:
             raise ValueError("live_trading_requires_at_least_80_candles")
         self.symbol = symbol
         self.timeframe = timeframe
         self.ticker = ticker or {}
+        self.operational_mode = operational_mode
+        self.min_score = int(max(0, min(100, min_score or 65)))
         self.current = self.df.iloc[-1]
         self.previous = self.df.iloc[-2]
 
@@ -71,6 +73,7 @@ class LiveTradingIA:
             wyckoff=wyckoff,
             volume=volume,
             flow=flow_context,
+            min_score=self.min_score,
         )
         levels = self._merge_candle_levels(self._levels(technical), candle_reading)
 
@@ -103,7 +106,8 @@ class LiveTradingIA:
         state = self._state(confluence_score, direction, technical, volume, smc, levels, invalidations, candle_reading)
         messages = self._messages(state, confluence_score, direction, technical, volume, smc, confirmations, confirmation_filters, wyckoff, elliott_wave, tape_reading, candle_reading)
         confidence = int(max(10, min(95, confluence_score * 0.72 + len(confirmations) * 3 - len(invalidations) * 5 - len(confirmation_filters) * 1.5)))
-        if state in ["BUY_CONFIRMED", "SELL_CONFIRMED"] and (confidence < 80 or confluence_score < 85 or not candle_reading.get("setup_validated")):
+        min_confidence = max(50, min(80, self.min_score))
+        if state in ["BUY_CONFIRMED", "SELL_CONFIRMED"] and (confidence < min_confidence or confluence_score < self.min_score or not candle_reading.get("setup_validated")):
             state = "WAITING_CONFIRMATION"
             messages.insert(0, candle_reading.get("blockers", ["Aguardando candle gatilho."])[0])
 
@@ -111,6 +115,8 @@ class LiveTradingIA:
             "success": True,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
+            "operationalMode": self.operational_mode,
+            "minScore": self.min_score,
             "state": state,
             "status": self.STATES[state],
             "message": messages[0],
@@ -338,19 +344,21 @@ class LiveTradingIA:
         candle_ok = bool(candle_reading.get("setup_validated"))
         candle_score = float(candle_reading.get("score", 0) or 0)
         candle_confidence = float(candle_reading.get("confidence", 0) or 0)
-        precise_gate = candle_ok and candle_score >= 85 and candle_confidence >= 80 and rr >= 2
+        candle_min = max(55, min(85, self.min_score))
+        confidence_min = max(50, min(80, self.min_score - 5))
+        precise_gate = candle_ok and candle_score >= candle_min and candle_confidence >= confidence_min and rr >= 2
 
-        if direction == "BUY" and score >= 85 and precise_gate:
+        if direction == "BUY" and score >= self.min_score and precise_gate:
             return "BUY_CONFIRMED"
-        if direction == "SELL" and score >= 85 and precise_gate:
+        if direction == "SELL" and score >= self.min_score and precise_gate:
             return "SELL_CONFIRMED"
-        if direction in ["BUY", "SELL"] and score >= 58 and not candle_ok:
+        if direction in ["BUY", "SELL"] and score >= max(42, self.min_score - 15) and not candle_ok:
             return "WAITING_CONFIRMATION"
-        if direction in ["BUY", "SELL"] and score >= 72 and breakout and candle_score >= 75:
+        if direction in ["BUY", "SELL"] and score >= self.min_score and breakout and candle_score >= max(50, self.min_score - 5):
             return "AGGRESSIVE_ENTRY"
-        if direction in ["BUY", "SELL"] and score >= 62 and candle_score >= 70:
+        if direction in ["BUY", "SELL"] and score >= max(50, self.min_score - 10) and candle_score >= max(50, self.min_score - 10):
             return "CONSERVATIVE_ENTRY"
-        if score < 42:
+        if score < max(35, self.min_score - 25):
             return "WAIT_NEXT_CANDLE"
         return "WAITING_CONFIRMATION"
 
@@ -514,5 +522,5 @@ class LiveTradingIA:
         }
 
 
-def build_live_status(candles, symbol, timeframe, ticker=None):
-    return LiveTradingIA(candles, symbol, timeframe, ticker).analyze()
+def build_live_status(candles, symbol, timeframe, ticker=None, operational_mode="moderado", min_score=65):
+    return LiveTradingIA(candles, symbol, timeframe, ticker, operational_mode, min_score).analyze()

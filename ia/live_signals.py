@@ -25,6 +25,16 @@ STATUS_STOP = "Stop atingido"
 STATUS_CANCELED = "Cancelado"
 
 FINAL_STATUSES = {STATUS_FINAL, STATUS_STOP, STATUS_CANCELED}
+OPERATIONAL_MODE_THRESHOLDS = {
+    "conservador": 80,
+    "moderado": 65,
+    "agressivo": 50,
+}
+OPERATIONAL_MODE_LABELS = {
+    "conservador": "Conservador",
+    "moderado": "Moderado",
+    "agressivo": "Agressivo",
+}
 
 
 def _now() -> str:
@@ -39,8 +49,30 @@ def _num(value: Any, default: float = 0.0) -> float:
     return number if number == number else default
 
 
+def normalize_operational_mode(value: Any) -> str:
+    mode = str(value or "moderado").strip().lower()
+    aliases = {
+        "conservative": "conservador",
+        "moderate": "moderado",
+        "aggressive": "agressivo",
+        "agressiva": "agressivo",
+    }
+    mode = aliases.get(mode, mode)
+    return mode if mode in OPERATIONAL_MODE_THRESHOLDS else "moderado"
+
+
+def operational_mode_min_score(value: Any) -> int:
+    return OPERATIONAL_MODE_THRESHOLDS[normalize_operational_mode(value)]
+
+
+def operational_mode_label(value: Any) -> str:
+    return OPERATIONAL_MODE_LABELS[normalize_operational_mode(value)]
+
+
 class SignalScoreService:
-    def allowed(self, live_status: dict[str, Any]) -> tuple[bool, list[str]]:
+    def allowed(self, live_status: dict[str, Any], operational_mode: str | None = None) -> tuple[bool, list[str]]:
+        mode = normalize_operational_mode(operational_mode or live_status.get("operationalMode"))
+        min_score = operational_mode_min_score(mode)
         layered = live_status.get("layered_signal") or {}
         signal = layered.get("signal") or {}
         risk_gate = signal.get("risk_gate") or {}
@@ -48,8 +80,8 @@ class SignalScoreService:
         reasons = []
         if not signal.get("generated"):
             reasons.append(signal.get("reason") or "Engine por camadas nao gerou sinal.")
-        if score < 80:
-            reasons.append(f"Score {score:.0f} abaixo do minimo 80.")
+        if score < min_score:
+            reasons.append(f"Score {score:.0f} abaixo do minimo {min_score} no modo {operational_mode_label(mode)}.")
         if risk_gate and not risk_gate.get("allowed"):
             reasons.extend(risk_gate.get("blockers") or ["Bloqueio de risco ativo."])
         if live_status.get("state") not in ["BUY_CONFIRMED", "SELL_CONFIRMED"]:
@@ -179,8 +211,16 @@ class SignalEngine:
         self.risk = SignalRiskManager()
         self.break_even = BreakEvenManager()
 
-    def update_from_live_status(self, live_status: dict[str, Any], market_meta=None, mtf_confluence=None) -> dict[str, Any]:
+    def update_from_live_status(
+        self,
+        live_status: dict[str, Any],
+        market_meta=None,
+        mtf_confluence=None,
+        operational_mode: str | None = None,
+    ) -> dict[str, Any]:
         market_meta = market_meta or {}
+        mode = normalize_operational_mode(operational_mode or live_status.get("operationalMode"))
+        live_status["operationalMode"] = mode
         layered = live_status.get("layered_signal") or {}
         raw_signal = layered.get("signal") or {}
         current_price = _num(live_status.get("current_price"))
@@ -190,7 +230,7 @@ class SignalEngine:
                 self.update_price(signal, current_price, key)
                 return signal
 
-        allowed, blockers = self.score_service.allowed(live_status)
+        allowed, blockers = self.score_service.allowed(live_status, mode)
         if not allowed:
             return self.waiting_payload(live_status, blockers)
 
@@ -234,6 +274,9 @@ class SignalEngine:
             "lastPrice": live_status.get("current_price"),
             "history": [{"status": STATUS_WAITING, "price": live_status.get("current_price"), "at": _now()}],
             "disclaimer": DISCLAIMER,
+            "operationalMode": normalize_operational_mode(live_status.get("operationalMode")),
+            "operationalModeLabel": operational_mode_label(live_status.get("operationalMode")),
+            "minScore": operational_mode_min_score(live_status.get("operationalMode")),
         }
         signal.update({
             "entry": signal["entryPrice"],
@@ -319,6 +362,9 @@ class SignalEngine:
             "timestamp": _now(),
             "layers": (live_status.get("layered_signal") or {}).get("ai_score", {}),
             "disclaimer": DISCLAIMER,
+            "operationalMode": normalize_operational_mode(live_status.get("operationalMode")),
+            "operationalModeLabel": operational_mode_label(live_status.get("operationalMode")),
+            "minScore": operational_mode_min_score(live_status.get("operationalMode")),
         }
 
     def list_active(self) -> list[dict[str, Any]]:

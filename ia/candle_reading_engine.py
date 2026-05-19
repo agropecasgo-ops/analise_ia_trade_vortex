@@ -31,8 +31,8 @@ def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
 
 
 class CandleReadingEngine:
-    MIN_SCORE = 85
-    MIN_CONFIDENCE = 80
+    MIN_SCORE = 65
+    MIN_CONFIDENCE = 65
     MIN_RR = 2.0
 
     def __init__(
@@ -47,6 +47,7 @@ class CandleReadingEngine:
         volume: dict[str, Any] | None = None,
         flow: dict[str, Any] | None = None,
         mtf: dict[str, Any] | None = None,
+        min_score: int | None = None,
     ) -> None:
         self.df = self._prepare(candles)
         self.symbol = symbol
@@ -57,6 +58,9 @@ class CandleReadingEngine:
         self.volume = volume or {}
         self.flow = flow or {}
         self.mtf = mtf or {}
+        if min_score is not None:
+            self.MIN_SCORE = int(max(0, min(100, min_score)))
+            self.MIN_CONFIDENCE = max(50, min(80, self.MIN_SCORE))
 
     def analyze(self) -> dict[str, Any]:
         if len(self.df) < 8:

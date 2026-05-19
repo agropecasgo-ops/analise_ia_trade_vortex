@@ -9,24 +9,26 @@
         }
 
         async candles(symbol, timeframe, limit = 240, signal, force = false) {
-            const key = `candles:${this.provider}:${symbol}:${timeframe}:${limit}`;
+            const operationalMode = this.operationalMode();
+            const key = `candles:${this.provider}:${symbol}:${timeframe}:${limit}:${operationalMode}`;
             if (!force) {
                 const cached = this.get(key);
                 if (cached) return cached;
             }
-            const response = await fetch(`/api/candles/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}?limit=${limit}`, { signal });
+            const response = await fetch(`/api/candles/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}?limit=${limit}&operationalMode=${encodeURIComponent(operationalMode)}`, { signal });
             const data = await response.json();
             if (data?.success) this.set(key, data);
             return data;
         }
 
         async analysis(symbol, timeframe, signal, force = false) {
-            const key = `analysis:${this.provider}:${symbol}:${timeframe}`;
+            const operationalMode = this.operationalMode();
+            const key = `analysis:${this.provider}:${symbol}:${timeframe}:${operationalMode}`;
             if (!force) {
                 const cached = this.get(key);
                 if (cached) return cached;
             }
-            const suffix = force ? `?refresh=${Date.now()}` : '';
+            const suffix = `?operationalMode=${encodeURIComponent(operationalMode)}${force ? `&refresh=${Date.now()}` : ''}`;
             const response = await fetch(`/api/analysis/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}${suffix}`, { signal });
             const data = await response.json();
             if (data?.success) this.set(key, data);
@@ -59,6 +61,10 @@
             while (this.cache.size > this.maxEntries) {
                 this.cache.delete(this.cache.keys().next().value);
             }
+        }
+
+        operationalMode() {
+            return window.FinanceOperationalMode?.get?.() || 'moderado';
         }
 
         invalidate(prefix = '') {

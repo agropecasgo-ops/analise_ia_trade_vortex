@@ -402,10 +402,14 @@ class InstitutionalContextEngine:
         symbol: str = "BTCUSDT",
         timeframe: str = "15m",
         candles_by_timeframe: dict[str, pd.DataFrame] | None = None,
+        operational_mode: str = "moderado",
+        min_score: int = 65,
     ):
         self.df = self._prepare(candles)
         self.symbol = symbol
         self.timeframe = timeframe
+        self.operational_mode = operational_mode
+        self.min_score = int(max(0, min(100, min_score or 65)))
         self.candles_by_timeframe = {
             key: self._prepare(value)
             for key, value in (candles_by_timeframe or {}).items()
@@ -458,6 +462,8 @@ class InstitutionalContextEngine:
             ],
             "symbol": self.symbol,
             "timeframe": self.timeframe,
+            "operationalMode": self.operational_mode,
+            "minScore": self.min_score,
             "operacional_context": context,
             "operacional_score": score,
             "score_classification": classification,
@@ -499,7 +505,7 @@ class InstitutionalContextEngine:
                 "source": "Nova estrutura institucional",
                 "reading": obligation["text"],
                 "execution": {"mode": signal["status"], "direction": signal["direction"], "reason": signal["operational_reason"]},
-                "no_trade_filters": invalidations if score < 60 else [],
+                "no_trade_filters": invalidations if score < self.min_score else [],
             },
             "operacional_candle_flow": candles[-12:],
             "operacional_current_candle": current,
@@ -1357,9 +1363,9 @@ class InstitutionalContextEngine:
         direction = context["directional_bias"]
         if operation_blockers:
             status = "operacao bloqueada"
-        elif score < 60 or invalidations:
+        elif score < self.min_score or invalidations:
             status = "aguardar contexto"
-        elif score < 75:
+        elif score < min(100, self.min_score + 15):
             status = "alerta de possivel entrada"
         else:
             status = "entrada contextual em observacao"
@@ -1371,6 +1377,8 @@ class InstitutionalContextEngine:
             "asset": self.symbol,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
+            "operationalMode": self.operational_mode,
+            "minScore": self.min_score,
             "direction": direction,
             "status": status,
             "score": score,
@@ -1603,8 +1611,10 @@ def build_operacional_reading(
     symbol: str = "BTCUSDT",
     timeframe: str = "15m",
     candles_by_timeframe: dict[str, pd.DataFrame] | None = None,
+    operational_mode: str = "moderado",
+    min_score: int = 65,
 ) -> dict[str, Any]:
-    return InstitutionalContextEngine(candles, symbol, timeframe, candles_by_timeframe).analyze()
+    return InstitutionalContextEngine(candles, symbol, timeframe, candles_by_timeframe, operational_mode, min_score).analyze()
 
 
 def build_operacional_context(
@@ -1612,8 +1622,10 @@ def build_operacional_context(
     symbol: str = "BTCUSDT",
     timeframe: str = "15m",
     candles_by_timeframe: dict[str, pd.DataFrame] | None = None,
+    operational_mode: str = "moderado",
+    min_score: int = 65,
 ) -> dict[str, Any]:
-    return InstitutionalContextEngine(candles, symbol, timeframe, candles_by_timeframe).context_only()
+    return InstitutionalContextEngine(candles, symbol, timeframe, candles_by_timeframe, operational_mode, min_score).context_only()
 
 
 def build_candle_flow(
@@ -1621,5 +1633,7 @@ def build_candle_flow(
     symbol: str = "BTCUSDT",
     timeframe: str = "15m",
     candles_by_timeframe: dict[str, pd.DataFrame] | None = None,
+    operational_mode: str = "moderado",
+    min_score: int = 65,
 ) -> dict[str, Any]:
-    return InstitutionalContextEngine(candles, symbol, timeframe, candles_by_timeframe).candle_flow_only()
+    return InstitutionalContextEngine(candles, symbol, timeframe, candles_by_timeframe, operational_mode, min_score).candle_flow_only()

@@ -39,7 +39,7 @@ from ia.force_heatmap_engine import build_force_heatmap
 from ia.liquidity_visual_engine import build_liquidity_visual_map
 from ia.layered_signal_engine import build_layered_signal
 from ia.live_trading import build_live_status
-from ia.live_signals import LiveSignalManager
+from ia.live_signals import LiveSignalManager, operational_mode_label, operational_mode_min_score
 from ia.market_data_service import build_market_data_snapshot
 from ia.market_data_router import MarketDataRouter
 from ia.multi_timeframe_engine import build_institutional_mtf_context
@@ -858,6 +858,7 @@ def layered_final_signal(layered_signal):
 def apply_layered_signal_to_live_status(status, layered_signal):
     signal = (layered_signal or {}).get("signal", {})
     ai_score = (layered_signal or {}).get("ai_score", {})
+    min_score = int(ai_score.get("threshold") or status.get("minScore") or 80)
     macro = (layered_signal or {}).get("macro_context", {})
     structure = (layered_signal or {}).get("market_structure", {})
     confirmation = (layered_signal or {}).get("confirmation", {})
@@ -902,21 +903,21 @@ def apply_layered_signal_to_live_status(status, layered_signal):
         status.update({
             "state": "WAITING_CONFIRMATION",
             "status": "AGUARDANDO CAMADAS",
-            "message": signal.get("reason") or "Score por camadas abaixo de 80.",
-            "messages": [signal.get("reason") or "Score por camadas abaixo de 80."] + blockers[:6] + status.get("messages", [])[:3],
+            "message": signal.get("reason") or f"Score por camadas abaixo de {min_score}.",
+            "messages": [signal.get("reason") or f"Score por camadas abaixo de {min_score}."] + blockers[:6] + status.get("messages", [])[:3],
             "entry_aggressive": None,
             "entry_conservative": None,
         })
     return status
 
 
-def apply_mtf_gate(signal, score, validation, confluence):
+def apply_mtf_gate(signal, score, validation, confluence, min_score=65):
     gated_signal = dict(signal)
     if confluence["strong_signal_allowed"]:
         if confluence["dominant_direction"] == "BULLISH" and any(word in signal["signal_type"] for word in ["compra", "entrada"]):
-            gated_signal["signal_type"] = "entrada_agressiva" if score >= 70 else "entrada_conservadora"
+            gated_signal["signal_type"] = "entrada_agressiva" if score >= min_score else "entrada_conservadora"
         elif confluence["dominant_direction"] == "BEARISH" and "venda" in signal["signal_type"]:
-            gated_signal["signal_type"] = "venda_agressiva" if score >= 70 else "venda"
+            gated_signal["signal_type"] = "venda_agressiva" if score >= min_score else "venda"
         gated_signal["mtf_confirmed"] = True
     else:
         if signal["signal_type"] in ["entrada_agressiva", "entrada_conservadora", "venda_agressiva"]:
@@ -926,7 +927,7 @@ def apply_mtf_gate(signal, score, validation, confluence):
     return gated_signal, validation
 
 
-def build_operational_state(signal, validation, smc, volume_analysis, final_score, mtf_confluence, levels):
+def build_operational_state(signal, validation, smc, volume_analysis, final_score, mtf_confluence, levels, min_score=65):
     signal_type = final_score.get("signal", "NEUTRAL")
     invalidation_reasons = []
     strong_invalidators = {
@@ -973,7 +974,7 @@ def build_operational_state(signal, validation, smc, volume_analysis, final_scor
     elif signal_type == "NEUTRAL" or signal.get("signal_type") == "neutro":
         state = "neutral"
         message = "Cenario neutro / sem entrada no momento."
-    elif not confluence_ok or score < 7:
+    elif not confluence_ok or score < (min_score / 10):
         state = "waiting_confirmation"
         message = "Aguardar confirmacao."
     else:
@@ -1409,7 +1410,9 @@ def api_institutional_adaptive_status():
 def get_analysis(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
-    cache_key = f"analysis:{symbol}:{timeframe}"
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
+    cache_key = f"analysis:{symbol}:{timeframe}:{operational_mode}"
     force_refresh = request.args.get("refresh") is not None
     cached = None if force_refresh else analysis_response_cache.get(cache_key)
     if cached is not None:
@@ -1445,7 +1448,7 @@ def get_analysis(symbol, timeframe):
         wyckoff = {**wyckoff, **wyckoff_context}
         institutional_mtf = build_institutional_mtf_context(mtf_analysis, mtf_confluence)
         try:
-            signal, validation = apply_mtf_gate(signal, score, validation, mtf_confluence)
+            signal, validation = apply_mtf_gate(signal, score, validation, mtf_confluence, min_score)
         except Exception:
             signal = default_signal(df)
             validation = default_validation()
@@ -1471,7 +1474,7 @@ def get_analysis(symbol, timeframe):
             final_score = default_final_score(levels)
         score = int(round(final_score["score"] * 10))
         try:
-            operational_state = build_operational_state(signal, validation, smc, volume_analysis, final_score, mtf_confluence, levels)
+            operational_state = build_operational_state(signal, validation, smc, volume_analysis, final_score, mtf_confluence, levels, min_score)
         except Exception:
             operational_state = {
                 "state": "neutral",
@@ -1554,6 +1557,7 @@ def get_analysis(symbol, timeframe):
             volume=volume_analysis,
             flow=flow_context,
             mtf=vortex_mtf_confluence,
+            min_score=min_score,
         )
         vortex_ai = build_vortex_ai_decision(
             symbol=symbol,
@@ -1571,6 +1575,7 @@ def get_analysis(symbol, timeframe):
             institutional_decision=institutional_decision,
             market_meta=market_meta,
             candle_reading=candle_reading,
+            min_score=min_score,
         )
         legacy_institutional_signal = dict(institutional_signal)
         institutional_signal = {
@@ -1651,6 +1656,7 @@ def get_analysis(symbol, timeframe):
                 wyckoff=wyckoff,
                 tape_reading=tape_reading,
             ),
+            min_score=min_score,
         )
         authoritative_signal = layered_final_signal(layered_signal)
         institutional_decision.update({
@@ -1676,6 +1682,9 @@ def get_analysis(symbol, timeframe):
             "success": True,
             "source": market_meta.get("source", "binance"),
             "symbol": normalize_symbol(symbol),
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "market": market_meta.get("market"),
             "market_label": market_meta.get("market_label"),
             "market_status": market_meta.get("market_status", "unknown"),
@@ -1771,6 +1780,9 @@ def get_analysis(symbol, timeframe):
             "success": False,
             "error": str(error),
             "symbol": normalize_symbol(symbol),
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "source": market_meta.get("source"),
             "market": market_meta.get("market"),
             "market_label": market_meta.get("market_label"),
@@ -1903,7 +1915,9 @@ def get_multi_timeframe(symbol):
 def api_live_status(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
-    cache_key = f"live:{symbol}:{timeframe}"
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
+    cache_key = f"live:{symbol}:{timeframe}:{operational_mode}"
     reason = request.args.get("reason", "heartbeat")
     force_refresh = reason in {"initial", "change", "new_candle", "support_resistance_break", "strong_change", "visibility_resume"}
     cached = None if force_refresh else live_status_cache.get(cache_key)
@@ -1912,7 +1926,7 @@ def api_live_status(symbol, timeframe):
     try:
         df = load_market_data(symbol, timeframe, 260)
         ticker = get_ticker(symbol)
-        status = build_live_status(df, symbol, timeframe, ticker)
+        status = build_live_status(df, symbol, timeframe, ticker, operational_mode, min_score)
         layered_signal = build_layered_signal(
             symbol,
             load_layered_live_candles(symbol, timeframe, df),
@@ -1924,6 +1938,7 @@ def api_live_status(symbol, timeframe):
                 wyckoff=status.get("wyckoff"),
                 tape_reading=status.get("tape_reading"),
             ),
+            min_score=min_score,
         )
         status = apply_layered_signal_to_live_status(status, layered_signal)
         market_meta = market.last_meta(symbol)
@@ -1988,6 +2003,7 @@ def api_live_status(symbol, timeframe):
                 institutional_decision={"timing": {"confirmed": live_signal.get("high_quality", False)}},
                 market_meta=market_meta,
                 candle_reading=status.get("candle_reading", {}),
+                min_score=min_score,
             )
         except Exception as vortex_error:
             live_vortex_mtf = live_mtf
@@ -2002,6 +2018,9 @@ def api_live_status(symbol, timeframe):
             }
         status.update({
             "market": market_meta.get("market"),
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "market_label": market_meta.get("market_label"),
             "source": market_meta.get("source"),
             "market_data_status": market_meta.get("market_status"),
@@ -2027,7 +2046,7 @@ def api_live_status(symbol, timeframe):
             "vortex_ai": live_vortex_ai,
             "websocket": build_binance_kline_stream(symbol, timeframe) if market_meta.get("streaming", False) else None,
         })
-        status["signal_event"] = live_signal_manager.update_from_live_status(status, market_meta, mtf_confluence)
+        status["signal_event"] = live_signal_manager.update_from_live_status(status, market_meta, mtf_confluence, operational_mode)
         status["live_signals"] = {
             "active": live_signal_manager.list_active(),
             "history": live_signal_manager.list_history(40),
@@ -2042,6 +2061,9 @@ def api_live_status(symbol, timeframe):
             "error": str(error),
             "symbol": symbol,
             "timeframe": timeframe,
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "state": "ANALYZING",
             "status": "ANALISANDO",
             "message": "IA recalculando. Grafico permanece ativo.",
@@ -2119,14 +2141,16 @@ def api_execution_history():
 def api_live_signals():
     symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
     timeframe = normalize_timeframe(request.args.get("timeframe", "15m"))
-    cache_key = f"live-signals:{symbol}:{timeframe}"
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
+    cache_key = f"live-signals:{symbol}:{timeframe}:{operational_mode}"
     cached = live_status_cache.get(cache_key)
     if cached is not None:
         return jsonify(sanitize_json(cached))
     try:
         df = load_market_data(symbol, timeframe, 260)
         ticker = get_ticker(symbol)
-        status = build_live_status(df, symbol, timeframe, ticker)
+        status = build_live_status(df, symbol, timeframe, ticker, operational_mode, min_score)
         layered_signal = build_layered_signal(
             symbol,
             load_layered_live_candles(symbol, timeframe, df),
@@ -2138,6 +2162,7 @@ def api_live_signals():
                 wyckoff=status.get("wyckoff"),
                 tape_reading=status.get("tape_reading"),
             ),
+            min_score=min_score,
         )
         status = apply_layered_signal_to_live_status(status, layered_signal)
         mtf_confluence = {}
@@ -2147,14 +2172,20 @@ def api_live_signals():
             mtf_confluence = {"strong_signal_allowed": True}
         status.update({
             "market": market.last_meta(symbol).get("market"),
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "market_label": market.last_meta(symbol).get("market_label"),
             "source": market.last_meta(symbol).get("source"),
             "market_data_status": market.last_meta(symbol).get("market_status"),
             "streaming": market.last_meta(symbol).get("streaming", False),
         })
-        current_signal = live_signal_manager.update_from_live_status(status, market.last_meta(symbol), mtf_confluence)
+        current_signal = live_signal_manager.update_from_live_status(status, market.last_meta(symbol), mtf_confluence, operational_mode)
         response = {
             "success": True,
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "signal": current_signal,
             "active": live_signal_manager.list_active(),
             "stats": live_signal_manager.stats(),
@@ -2163,7 +2194,15 @@ def api_live_signals():
         live_status_cache.set(cache_key, response)
         return jsonify(sanitize_json(response))
     except Exception as error:
-        return jsonify({"success": False, "error": str(error), "active": live_signal_manager.list_active(), "stats": live_signal_manager.stats()}), 200
+        return jsonify({
+            "success": False,
+            "error": str(error),
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
+            "active": live_signal_manager.list_active(),
+            "stats": live_signal_manager.stats(),
+        }), 200
 
 
 @app.route("/api/signals/realtime")
@@ -2171,10 +2210,12 @@ def api_live_signals():
 def api_signals_realtime():
     symbol = normalize_symbol(request.args.get("symbol", DEFAULT_SYMBOL))
     timeframe = normalize_timeframe(request.args.get("timeframe", "15m"))
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
     try:
         df = load_market_data(symbol, timeframe, 260)
         ticker = get_ticker(symbol)
-        status = build_live_status(df, symbol, timeframe, ticker)
+        status = build_live_status(df, symbol, timeframe, ticker, operational_mode, min_score)
         layered_signal = build_layered_signal(
             symbol,
             load_layered_live_candles(symbol, timeframe, df),
@@ -2186,17 +2227,22 @@ def api_signals_realtime():
                 wyckoff=status.get("wyckoff"),
                 tape_reading=status.get("tape_reading"),
             ),
+            min_score=min_score,
         )
         status = apply_layered_signal_to_live_status(status, layered_signal)
         status.update({
+            "operationalMode": operational_mode,
             "market": market.last_meta(symbol).get("market"),
             "market_label": market.last_meta(symbol).get("market_label"),
             "source": market.last_meta(symbol).get("source"),
             "market_data_status": market.last_meta(symbol).get("market_status"),
         })
-        current_signal = live_signal_manager.update_from_live_status(status, market.last_meta(symbol), {})
+        current_signal = live_signal_manager.update_from_live_status(status, market.last_meta(symbol), {}, operational_mode)
         return jsonify(sanitize_json({
             "success": True,
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "signal": current_signal,
             "active": live_signal_manager.list_active(),
             "history": live_signal_manager.list_history(100),
@@ -2208,6 +2254,9 @@ def api_signals_realtime():
         return jsonify(sanitize_json({
             "success": False,
             "error": str(error),
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "active": live_signal_manager.list_active(),
             "history": live_signal_manager.list_history(100),
             "stats": live_signal_manager.stats(),
@@ -2258,13 +2307,18 @@ def api_live_signals_history():
 def api_operacional_analysis(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
         fractal_frames = load_layered_live_candles(symbol, timeframe, df)
         meta = market.last_meta(symbol)
-        payload = build_operacional_reading(df, symbol, timeframe, fractal_frames)
+        payload = build_operacional_reading(df, symbol, timeframe, fractal_frames, operational_mode, min_score)
         payload.update({
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "source": meta.get("source"),
             "market": meta.get("market"),
             "market_label": meta.get("market_label"),
@@ -2312,14 +2366,19 @@ def api_operacional_candles(symbol, timeframe):
 def api_operacional_live(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
         fractal_frames = load_layered_live_candles(symbol, timeframe, df)
-        reading = build_operacional_reading(df, symbol, timeframe, fractal_frames)
+        reading = build_operacional_reading(df, symbol, timeframe, fractal_frames, operational_mode, min_score)
         signal = reading.get("operacional_signal", {})
         return jsonify(sanitize_json({
             "success": True,
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "module": "operacional_leitura_grafica",
             "isolated": True,
             "symbol": symbol,
@@ -2341,13 +2400,18 @@ def api_operacional_live(symbol, timeframe):
 def api_operacional_signals(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
         fractal_frames = load_layered_live_candles(symbol, timeframe, df)
-        reading = build_operacional_reading(df, symbol, timeframe, fractal_frames)
+        reading = build_operacional_reading(df, symbol, timeframe, fractal_frames, operational_mode, min_score)
         return jsonify(sanitize_json({
             "success": True,
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "module": "operacional_leitura_grafica",
             "isolated": True,
             "symbol": symbol,
@@ -2384,13 +2448,18 @@ def register_operacional_live_signal(status):
 def api_operacional_live_status(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
         fractal_frames = load_layered_live_candles(symbol, timeframe, df)
-        status = build_operacional_live_status(df, symbol, timeframe, fractal_frames)
+        status = build_operacional_live_status(df, symbol, timeframe, fractal_frames, operational_mode, min_score)
         meta = market.last_meta(symbol)
         status.update({
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
             "source": meta.get("source"),
             "market": meta.get("market"),
             "market_label": meta.get("market_label"),
@@ -2420,6 +2489,8 @@ def api_operacional_live_status(symbol, timeframe):
 def api_operacional_live_signals(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
     items = [
         item for item in operacional_live_signals
         if item.get("symbol") == symbol and item.get("timeframe") == timeframe
@@ -2427,6 +2498,9 @@ def api_operacional_live_signals(symbol, timeframe):
     return jsonify(sanitize_json({
         "success": True,
         "module": "live_operacional_grafico",
+        "operationalMode": operational_mode,
+        "operationalModeLabel": operational_mode_label(operational_mode),
+        "minScore": min_score,
         "symbol": symbol,
         "timeframe": timeframe,
         "signals": items[-40:],
@@ -2440,11 +2514,13 @@ def api_operacional_live_signals(symbol, timeframe):
 def api_operacional_context(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
     try:
         limit = int(request.args.get("limit", 240))
         df = load_market_data(symbol, timeframe, limit)
         fractal_frames = load_layered_live_candles(symbol, timeframe, df)
-        return jsonify(sanitize_json(build_operacional_context(df, symbol, timeframe, fractal_frames)))
+        return jsonify(sanitize_json(build_operacional_context(df, symbol, timeframe, fractal_frames, operational_mode, min_score)))
     except Exception as error:
         return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error)}), 200
 
@@ -2454,11 +2530,13 @@ def api_operacional_context(symbol, timeframe):
 def api_operacional_candle_flow(symbol, timeframe):
     symbol = normalize_symbol(symbol)
     timeframe = normalize_timeframe(timeframe)
+    operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+    min_score = operational_mode_min_score(operational_mode)
     try:
         limit = int(request.args.get("limit", 120))
         df = load_market_data(symbol, timeframe, limit)
         fractal_frames = load_layered_live_candles(symbol, timeframe, df)
-        return jsonify(sanitize_json(build_candle_flow(df, symbol, timeframe, fractal_frames)))
+        return jsonify(sanitize_json(build_candle_flow(df, symbol, timeframe, fractal_frames, operational_mode, min_score)))
     except Exception as error:
         return jsonify({"success": False, "symbol": symbol, "timeframe": timeframe, "error": str(error), "candle_flow": []}), 200
 
@@ -2466,6 +2544,8 @@ def api_operacional_candle_flow(symbol, timeframe):
 @app.route("/api/heatmap")
 def get_heatmap():
     try:
+        operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+        min_score = operational_mode_min_score(operational_mode)
         assets = market.get_assets()
         selected = request.args.get("symbols")
         if selected:
@@ -2473,8 +2553,15 @@ def get_heatmap():
             assets = [asset for asset in assets if asset["symbol"] in requested] or assets
 
         assets = assets[:8]
-        heatmap = create_mtf_heatmap(assets, HEATMAP_TIMEFRAMES)
-        return jsonify({"success": True, "source": "router", "heatmap": heatmap})
+        heatmap = create_mtf_heatmap(assets, HEATMAP_TIMEFRAMES, min_score)
+        return jsonify({
+            "success": True,
+            "source": "router",
+            "operationalMode": operational_mode,
+            "operationalModeLabel": operational_mode_label(operational_mode),
+            "minScore": min_score,
+            "heatmap": heatmap,
+        })
     except Exception as error:
         return jsonify({"success": False, "error": str(error)}), 400
 
@@ -2483,13 +2570,15 @@ def get_heatmap():
 def get_trading_hours(symbol):
     try:
         symbol = normalize_symbol(symbol)
-        payload = build_trading_hours(symbol)
+        operational_mode = normalize_operational_mode(request.args.get("operationalMode") or request.args.get("mode"))
+        min_score = operational_mode_min_score(operational_mode)
+        payload = build_trading_hours(symbol, operational_mode, min_score)
         return jsonify({"success": True, **payload})
     except Exception as error:
         return jsonify({"success": False, "error": str(error)}), 400
 
 
-def build_trading_hours(symbol):
+def build_trading_hours(symbol, operational_mode="moderado", min_score=65):
     brt = timezone(timedelta(hours=-3), name="BRT")
     now = datetime.now(brt)
     current_hour = now.hour
@@ -2506,17 +2595,22 @@ def build_trading_hours(symbol):
             level, label, score = "high", "Alta", 72
         if hour in profile["excellent"]:
             level, label, score = "excellent", "Excelente", 90
+        allowed = score >= min_score
         hours.append({
             "hour": hour,
             "label": f"{hour:02d}h",
-            "level": level,
-            "level_label": label,
+            "level": level if allowed else "low",
+            "level_label": label if allowed else "Aguardar",
             "score": score,
+            "allowed": allowed,
             "is_now": hour == current_hour,
         })
 
     return {
         "symbol": symbol,
+        "operationalMode": operational_mode,
+        "operationalModeLabel": operational_mode_label(operational_mode),
+        "minScore": min_score,
         "asset_label": profile["asset_label"],
         "timezone": "Brasil (BRT)",
         "current_hour": current_hour,
@@ -2561,7 +2655,7 @@ def trading_hours_profile(symbol):
     }
 
 
-def create_mtf_heatmap(assets, timeframes):
+def create_mtf_heatmap(assets, timeframes, min_score=65):
     colors = {
         "BULLISH": "#10b981",
         "BEARISH": "#ef4444",
@@ -2581,9 +2675,10 @@ def create_mtf_heatmap(assets, timeframes):
                 "direction": direction,
                 "strength": item["strength"],
                 "confidence": item["confidence"],
+                "meets_threshold": item["strength"] >= min_score,
                 "color": colors.get(direction, "#64748b"),
             }
-        heatmap[symbol]["confluence"] = confluence
+        heatmap[symbol]["confluence"] = {**confluence, "min_score": min_score}
     return heatmap
 
 

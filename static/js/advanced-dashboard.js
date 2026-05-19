@@ -73,6 +73,10 @@ class AdvancedDashboard {
         document.getElementById('tradingHoursToggle')?.addEventListener('click', () => {
             document.getElementById('tradingHoursCard')?.classList.toggle('is-open');
         });
+        window.FinanceOperationalMode?.onChange?.(() => {
+            this.marketDataEngine?.invalidate?.();
+            this.updateDashboard(true);
+        });
         window.addEventListener('resize', () => this.resizeChart());
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission().catch(() => {});
@@ -1061,7 +1065,8 @@ class AdvancedDashboard {
     }
 
     async updateHeatmap() {
-        const response = await fetch('/api/heatmap');
+        const operationalMode = window.FinanceOperationalMode?.get?.() || 'moderado';
+        const response = await fetch(`/api/heatmap?operationalMode=${encodeURIComponent(operationalMode)}`);
         const data = await response.json();
         if (!data.success) return;
         this.renderHeatmap(data.heatmap);
@@ -1104,7 +1109,8 @@ class AdvancedDashboard {
     }
 
     async updateTradingHours() {
-        const response = await fetch(`/api/trading-hours/${encodeURIComponent(this.currentAsset)}`);
+        const operationalMode = window.FinanceOperationalMode?.get?.() || 'moderado';
+        const response = await fetch(`/api/trading-hours/${encodeURIComponent(this.currentAsset)}?operationalMode=${encodeURIComponent(operationalMode)}`);
         const data = await response.json();
         if (!data.success) return;
         this.renderTradingHours(data);

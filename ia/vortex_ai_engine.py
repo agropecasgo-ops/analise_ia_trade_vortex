@@ -30,8 +30,8 @@ def _bool(value: Any) -> bool:
 
 
 class VortexAIEngine:
-    MIN_SCORE = 85
-    MIN_CONFIDENCE = 80
+    MIN_SCORE = 65
+    MIN_CONFIDENCE = 65
     MIN_RR = 2.0
 
     def __init__(
@@ -52,6 +52,7 @@ class VortexAIEngine:
         institutional_decision: dict[str, Any],
         market_meta: dict[str, Any] | None = None,
         candle_reading: dict[str, Any] | None = None,
+        min_score: int | None = None,
     ) -> None:
         self.symbol = symbol
         self.timeframe = timeframe
@@ -68,6 +69,9 @@ class VortexAIEngine:
         self.institutional_decision = institutional_decision or {}
         self.market_meta = market_meta or {}
         self.candle_reading = candle_reading or {}
+        if min_score is not None:
+            self.MIN_SCORE = int(max(0, min(100, min_score)))
+            self.MIN_CONFIDENCE = max(50, min(80, self.MIN_SCORE))
 
     def analyze(self) -> dict[str, Any]:
         macro = self._macro_context()

@@ -21,6 +21,14 @@ def approved_live_status():
     }
 
 
+def scored_live_status(score):
+    status = approved_live_status()
+    status["confluence_score"] = score
+    status["layered_signal"]["ai_score"]["score"] = score
+    status["layered_signal"]["signal"]["score"] = score
+    return status
+
+
 class RealtimeSignalInstitutionalFilterTests(unittest.TestCase):
     def test_without_institutional_payload_keeps_existing_allowed_behavior(self):
         allowed, reasons = SignalScoreService().allowed(approved_live_status())
@@ -72,6 +80,20 @@ class RealtimeSignalInstitutionalFilterTests(unittest.TestCase):
 
         self.assertFalse(allowed)
         self.assertIn("Noticia forte bloqueia novo sinal.", reasons)
+
+    def test_operational_mode_thresholds_control_minimum_score(self):
+        service = SignalScoreService()
+
+        conservador_allowed, conservador_reasons = service.allowed(scored_live_status(70), "conservador")
+        moderado_allowed, moderado_reasons = service.allowed(scored_live_status(70), "moderado")
+        agressivo_allowed, agressivo_reasons = service.allowed(scored_live_status(55), "agressivo")
+
+        self.assertFalse(conservador_allowed)
+        self.assertIn("Score 70 abaixo do minimo 80 no modo Conservador.", conservador_reasons)
+        self.assertTrue(moderado_allowed)
+        self.assertEqual(moderado_reasons, [])
+        self.assertTrue(agressivo_allowed)
+        self.assertEqual(agressivo_reasons, [])
 
 
 if __name__ == "__main__":

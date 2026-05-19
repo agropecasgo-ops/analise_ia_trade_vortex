@@ -34,11 +34,15 @@ class OperacionalLiveEngine:
         symbol: str,
         timeframe: str,
         candles_by_timeframe: dict[str, pd.DataFrame] | None = None,
+        operational_mode: str = "moderado",
+        min_score: int = 65,
     ):
         self.df = candles.copy().dropna(subset=["open", "high", "low", "close"])
         self.symbol = symbol
         self.timeframe = timeframe
-        self.reading = build_operacional_reading(self.df, symbol, timeframe, candles_by_timeframe)
+        self.operational_mode = operational_mode
+        self.min_score = int(max(0, min(100, min_score or 65)))
+        self.reading = build_operacional_reading(self.df, symbol, timeframe, candles_by_timeframe, operational_mode, self.min_score)
 
     def analyze(self) -> dict[str, Any]:
         if not self.reading.get("success"):
@@ -70,6 +74,8 @@ class OperacionalLiveEngine:
             "isolated": True,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
+            "operationalMode": self.operational_mode,
+            "minScore": self.min_score,
             "status": decision["status"],
             "state": decision["state"],
             "direction": decision["direction"],
@@ -115,6 +121,8 @@ class OperacionalLiveEngine:
             "isolated": True,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
+            "operationalMode": self.operational_mode,
+            "minScore": self.min_score,
             "status": self.STATES["ANALISANDO"],
             "state": "ANALISANDO",
             "direction": "NEUTRO",
@@ -149,7 +157,7 @@ class OperacionalLiveEngine:
         rr = float(risk.get("risk_reward") or signal.get("risk_reward") or 0)
         pullback_failure = pullback.get("pullback_failure")
         high_risk = context.get("risk") == "alto" or risk.get("scenario_risk") == "alto" or rr < 1
-        no_context = score < 40 or not liquidity.get("movement_has_fuel", True)
+        no_context = score < max(35, self.min_score - 25) or not liquidity.get("movement_has_fuel", True)
 
         if operation_blockers or manipulation.get("detected") or pullback_failure or high_risk or no_context:
             return {
@@ -159,7 +167,7 @@ class OperacionalLiveEngine:
                 "confidence": max(35, min(88, score)),
                 "reason": (operation_blockers or [manipulation.get("reading") or pullback.get("reading") or obligation.get("text") or "Movimento sem contexto institucional suficiente."])[0],
             }
-        if score < 60 or len(invalidations) > len(confirmations):
+        if score < self.min_score or len(invalidations) > len(confirmations):
             return {
                 "state": "AGUARDAR",
                 "status": self.STATES["AGUARDAR"],
@@ -167,7 +175,7 @@ class OperacionalLiveEngine:
                 "confidence": max(35, min(82, score)),
                 "reason": obligation.get("text") or "Mercado sem contexto direcional suficiente para executar.",
             }
-        if bias == "COMPRA CONTEXTUAL" and score >= 60:
+        if bias == "COMPRA CONTEXTUAL" and score >= self.min_score:
             return {
                 "state": "COMPRA",
                 "status": "ALERTA DE COMPRA CONTEXTUAL",
@@ -175,7 +183,7 @@ class OperacionalLiveEngine:
                 "confidence": min(92, max(score, 58)),
                 "reason": signal.get("explanation") or obligation.get("text") or "Contexto comprador com liquidez e gatilho mapeados.",
             }
-        if bias == "VENDA CONTEXTUAL" and score >= 60:
+        if bias == "VENDA CONTEXTUAL" and score >= self.min_score:
             return {
                 "state": "VENDA",
                 "status": "ALERTA DE VENDA CONTEXTUAL",
@@ -277,5 +285,5 @@ class OperacionalLiveEngine:
         }
 
 
-def build_operacional_live_status(candles, symbol, timeframe, candles_by_timeframe=None):
-    return OperacionalLiveEngine(candles, symbol, timeframe, candles_by_timeframe).analyze()
+def build_operacional_live_status(candles, symbol, timeframe, candles_by_timeframe=None, operational_mode="moderado", min_score=65):
+    return OperacionalLiveEngine(candles, symbol, timeframe, candles_by_timeframe, operational_mode, min_score).analyze()

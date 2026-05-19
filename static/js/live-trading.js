@@ -78,6 +78,7 @@ class LiveTradingDashboard {
         document.getElementById('execConfirmBtn')?.addEventListener('click', () => this.confirmExecution(false));
         document.getElementById('execKillBtn')?.addEventListener('click', () => this.killExecution());
         document.getElementById('execModeSelect')?.addEventListener('change', () => this.updateExecutionMode(false));
+        window.FinanceOperationalMode?.onChange?.(() => this.resetLive(true));
         window.addEventListener('resize', () => this.resizeChart());
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) return;
@@ -293,7 +294,8 @@ class LiveTradingDashboard {
         this.statusController = new AbortController();
         clearTimeout(this.statusTimer);
         this.setStatusLoading(true);
-        fetch(`/api/live/status/${this.symbol}/${this.timeframe}?reason=${encodeURIComponent(reason)}`, {
+        const operationalMode = window.FinanceOperationalMode?.get?.() || 'moderado';
+        fetch(`/api/live/status/${this.symbol}/${this.timeframe}?reason=${encodeURIComponent(reason)}&operationalMode=${encodeURIComponent(operationalMode)}`, {
             signal: this.statusController.signal,
         })
             .then((response) => response.json())
@@ -387,7 +389,8 @@ class LiveTradingDashboard {
     fetchSignals() {
         this.signalsController?.abort();
         this.signalsController = new AbortController();
-        fetch(`/api/live/signals?symbol=${encodeURIComponent(this.symbol)}&timeframe=${encodeURIComponent(this.timeframe)}`, {
+        const operationalMode = window.FinanceOperationalMode?.get?.() || 'moderado';
+        fetch(`/api/live/signals?symbol=${encodeURIComponent(this.symbol)}&timeframe=${encodeURIComponent(this.timeframe)}&operationalMode=${encodeURIComponent(operationalMode)}`, {
             signal: this.signalsController.signal,
         })
             .then((response) => response.json())

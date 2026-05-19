@@ -41,6 +41,7 @@
         });
         $('operacionalRefresh')?.addEventListener('click', refreshAll);
         $('opFitChart')?.addEventListener('click', () => state.chart?.timeScale().fitContent());
+        window.FinanceOperationalMode?.onChange?.(() => refreshAll());
         window.addEventListener('resize', () => resizeChart());
     }
 
@@ -100,8 +101,8 @@
         setLoading();
         try {
             const [candlesResponse, analysisResponse] = await Promise.all([
-                fetch(`/api/operacional/candles/${state.symbol}/${state.timeframe}?limit=260`, { signal: state.controller.signal }),
-                fetch(`/api/operacional/analysis/${state.symbol}/${state.timeframe}?limit=260`, { signal: state.controller.signal }),
+                fetch(`/api/operacional/candles/${state.symbol}/${state.timeframe}?limit=260&operationalMode=${encodeURIComponent(operationalMode())}`, { signal: state.controller.signal }),
+                fetch(`/api/operacional/analysis/${state.symbol}/${state.timeframe}?limit=260&operationalMode=${encodeURIComponent(operationalMode())}`, { signal: state.controller.signal }),
             ]);
             const candlesData = await candlesResponse.json();
             const analysis = await analysisResponse.json();
@@ -349,7 +350,7 @@
 
     async function refreshLive() {
         try {
-            const response = await fetch(`/api/operacional/live/${state.symbol}/${state.timeframe}?limit=260`);
+            const response = await fetch(`/api/operacional/live/${state.symbol}/${state.timeframe}?limit=260&operationalMode=${encodeURIComponent(operationalMode())}`);
             const data = await response.json();
             if (data?.success) {
                 renderLiveFeed(data.operacional_live || []);
@@ -458,6 +459,10 @@
         };
         state.chartEngine?.update(candle, volume);
         setText('opLivePrice', formatPrice(price));
+    }
+
+    function operationalMode() {
+        return window.FinanceOperationalMode?.get?.() || 'moderado';
     }
 
     function bucketTime(timestamp, timeframe) {

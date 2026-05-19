@@ -246,7 +246,7 @@
             <span class="badge-ai" id="signalsUpdatedAt">--</span>
         </div>
         <div class="signals-grid" id="signalsActiveGrid">
-            <div class="live-empty-signal">Aguardando score acima de 80...</div>
+            <div class="live-empty-signal">Aguardando score acima de 65 no modo Moderado</div>
         </div>
     </section>
 
@@ -264,5 +264,5 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/websocket-engine.js') }}?v=20260512-4"></script>
-<script src="{{ url_for('static', filename='js/signals-realtime.js') }}?v=20260517-1"></script>
+<script src="{{ url_for('static', filename='js/signals-realtime.js') }}?v=20260518-operational-mode"></script>
 {% endblock %}

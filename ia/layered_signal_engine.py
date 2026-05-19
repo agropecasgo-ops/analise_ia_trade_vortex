@@ -24,11 +24,13 @@ class LayeredSignalEngine:
         candles_by_timeframe: dict[str, pd.DataFrame],
         entry_timeframe: str = "1m",
         legacy_filters: dict[str, Any] | None = None,
+        min_score: int = 80,
     ) -> None:
         self.symbol = symbol
         self.candles_by_timeframe = candles_by_timeframe or {}
         self.entry_timeframe = entry_timeframe
         self.legacy_filters = legacy_filters or {}
+        self.min_score = max(0, min(100, int(min_score or 80)))
 
     def analyze(self) -> dict[str, Any]:
         entry_df = self._entry_candles()
@@ -36,7 +38,13 @@ class LayeredSignalEngine:
         structure = MarketStructureEngine(entry_df, macro).analyze()
         confirmation = ConfirmationEngine(entry_df, macro, structure).analyze()
         direction = self._direction(macro, structure, confirmation)
-        score = AIScoreEngine().score(macro, structure, confirmation, {**self.legacy_filters, "direction": direction})
+        score = AIScoreEngine().score(
+            macro,
+            structure,
+            confirmation,
+            {**self.legacy_filters, "direction": direction},
+            min_score=self.min_score,
+        )
         signal = self._signal(entry_df, macro, structure, confirmation, score)
 
         return {
@@ -212,8 +220,9 @@ def build_layered_signal(
     candles_by_timeframe: dict[str, pd.DataFrame],
     entry_timeframe: str = "1m",
     legacy_filters: dict[str, Any] | None = None,
+    min_score: int = 80,
 ) -> dict[str, Any]:
-    return LayeredSignalEngine(symbol, candles_by_timeframe, entry_timeframe, legacy_filters).analyze()
+    return LayeredSignalEngine(symbol, candles_by_timeframe, entry_timeframe, legacy_filters, min_score).analyze()
 
 
 def build_layered_signal_from_provider(
