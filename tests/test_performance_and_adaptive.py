@@ -51,6 +51,25 @@ class PerformanceAndAdaptiveTests(unittest.TestCase):
         self.assertGreaterEqual(adaptive["minimumScoreAdjustment"], 6)
         self.assertTrue(adaptive["filters"]["reduceAfterLosingStreak"])
 
+    def test_adaptive_contextual_fields_are_available(self):
+        history = [
+            signal("Alvo final atingido", asset="BTCUSDT", timeframe="15m", rr=2.0, hour="10"),
+            signal("Stop atingido", asset="BTCUSDT", timeframe="15m", rr=1.2, hour="11"),
+            signal("Alvo final atingido", asset="ETHUSDT", timeframe="5m", rr=1.5, hour="10"),
+            signal("Stop atingido", asset="ETHUSDT", timeframe="5m", rr=1.0, hour="11"),
+        ]
+        performance = build_performance_stats(history, [])
+        adaptive = build_adaptive_status(performance, history)
+
+        self.assertIn("winRateContextual", adaptive)
+        self.assertIn("bestTimeframes", adaptive)
+        self.assertIn("bestAssets", adaptive)
+        self.assertIn("weakContexts", adaptive)
+        self.assertIn("strongContexts", adaptive)
+        self.assertIn("adaptiveRecommendation", adaptive)
+        self.assertIsInstance(adaptive["contextSamples"], list)
+        self.assertGreaterEqual(len(adaptive["contextSamples"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

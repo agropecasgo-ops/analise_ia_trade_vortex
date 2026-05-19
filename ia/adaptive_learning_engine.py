@@ -2,12 +2,13 @@
 Adaptive learning status for institutional AI.
 
 This module produces conservative parameter recommendations from performance
-statistics. It adjusts weights/filtros only as guidance; it does not retrain or
-replace the core AI engines.
+statistics. It adjusts weights and context recommendations only as guidance;
+it does not retrain or replace the core AI engines.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 
@@ -19,7 +20,35 @@ def _num(value: Any, default: float = 0.0) -> float:
     return number if number == number else default
 
 
+def _text(value: Any, default: str = "unknown") -> str:
+    if value is None:
+        return default
+    if isinstance(value, dict):
+        return str(value.get("label") or value.get("type") or value.get("status") or list(value.values())[:1] or default)
+    return str(value)
+
+
+def _score_bucket(value: Any) -> str:
+    score = _num(value)
+    if score >= 80:
+        return "score_alto"
+    if score >= 60:
+        return "score_medio"
+    return "score_baixo"
+
+
 class AdaptiveLearningEngine:
+    CONTEXT_KEYS = {
+        "operationalMode": ("operationalMode",),
+        "scoreBucket": (),
+        "entryTiming": ("entryTiming",),
+        "direction": ("direction",),
+        "orderFlowContext": ("orderFlowContext",),
+        "multiTimeframeContext": ("multiTimeframeContext",),
+        "liquidity": ("liquidity",),
+        "marketStructure": ("marketStructure",),
+    }
+
     def __init__(self, performance: dict[str, Any], history: list[dict[str, Any]] | None = None) -> None:
         self.performance = performance or {}
         self.history = history or []
@@ -32,6 +61,12 @@ class AdaptiveLearningEngine:
         preferred = self._preferred_asset_timeframes(best=True)
         avoided = self._preferred_asset_timeframes(best=False)
         weights = self._weights()
+        closed = self._closed_signals()
+        win_rate_contextual = self._win_rate_contextual(closed)
+        best_timeframes = self._best_timeframes()
+        best_assets = self._best_assets()
+        strong_contexts = self._strong_contexts(win_rate_contextual)
+        weak_contexts = self._weak_contexts(win_rate_contextual)
         return {
             "success": True,
             "mode": "ADAPTIVE_FILTERS_ONLY",
@@ -48,8 +83,20 @@ class AdaptiveLearningEngine:
                 "reduceSignalsInBadHours": bool(bad_hours),
                 "prioritizeBetterAssets": bool(preferred),
             },
+            "winRateContextual": win_rate_contextual,
+            "bestTimeframes": best_timeframes,
+            "bestAssets": best_assets,
+            "strongContexts": strong_contexts,
+            "weakContexts": weak_contexts,
+            "adaptiveRecommendation": self._adaptive_recommendation(strong_contexts, weak_contexts, best_timeframes, best_assets),
+            "contextSamples": self._context_samples(closed),
             "explanation": self._explanation(losing_streak, market_quality, score_adjustment),
         }
+
+    def _closed_signals(self) -> list[dict[str, Any]]:
+        return [signal for signal in self.history if signal.get("status") in {
+            "Alvo final atingido", "Alvo 2 atingido", "Alvo 1 atingido", "Stop atingido", "Cancelado"
+        }]
 
     def _losing_streak(self) -> int:
         streak = 0
@@ -111,6 +158,178 @@ class AdaptiveLearningEngine:
             return sorted(items, key=lambda item: (item.get("winRate", 0), item.get("averageRR", 0)), reverse=True)[:5]
         return sorted(items, key=lambda item: (item.get("winRate", 0), item.get("averageRR", 0)))[:5]
 
+    def _best_timeframes(self) -> list[dict[str, Any]]:
+        timeframes = self.performance.get("winRateByTimeframe") or {}
+        return sorted(
+            [
+                {
+                    "timeframe": key,
+                    "signals": int(value.get("signals", 0)),
+                    "wins": int(value.get("wins", 0)),
+                    "winRate": _num(value.get("winRate")),
+                    "averageRR": _num(value.get("averageRR")),
+                }
+                for key, value in timeframes.items()
+            ],
+            key=lambda item: (item["winRate"], item["signals"]),
+            reverse=True,
+        )[:5]
+
+    def _best_assets(self) -> list[dict[str, Any]]:
+        assets = self.performance.get("winRateByAsset") or {}
+        return sorted(
+            [
+                {
+                    "asset": key,
+                    "signals": int(value.get("signals", 0)),
+                    "wins": int(value.get("wins", 0)),
+                    "winRate": _num(value.get("winRate")),
+                    "averageRR": _num(value.get("averageRR")),
+                }
+                for key, value in assets.items()
+            ],
+            key=lambda item: (item["winRate"], item["signals"]),
+            reverse=True,
+        )[:5]
+
+    def _win_rate_contextual(self, signals: list[dict[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for dimension, path in self.CONTEXT_KEYS.items():
+            groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for signal in signals:
+                if dimension == "scoreBucket":
+                    key = _score_bucket(signal.get("score") or signal.get("confluence_score") or signal.get("signalStrength"))
+                else:
+                    key = self._extract_context_value(signal, path)
+                groups[key].append(signal)
+            result[dimension] = {
+                key: self._context_metrics(items)
+                for key, items in groups.items()
+                if key != "unknown"
+            }
+        return result
+
+    def _extract_context_value(self, signal: dict[str, Any], path: tuple[str, ...]) -> str:
+        current: Any = signal
+        for part in path:
+            if not isinstance(current, dict):
+                return "unknown"
+            current = current.get(part)
+        return _text(current)
+
+    def _context_metrics(self, signals: list[dict[str, Any]]) -> dict[str, Any]:
+        wins = sum(1 for signal in signals if signal.get("status") in {"Alvo final atingido", "Alvo 2 atingido", "Alvo 1 atingido"})
+        losses = sum(1 for signal in signals if signal.get("status") in {"Stop atingido", "Cancelado"})
+        total = len(signals)
+        return {
+            "signals": total,
+            "wins": wins,
+            "losses": losses,
+            "winRate": round((wins / total * 100), 2) if total else 0.0,
+            "averageRR": round(self._average([_num(signal.get("riskReward")) for signal in signals]), 2),
+        }
+
+    def _strong_contexts(self, contextual: dict[str, Any]) -> list[dict[str, Any]]:
+        contexts = []
+        for dimension, groups in contextual.items():
+            for value, report in groups.items():
+                if report["signals"] >= 3 and report["winRate"] >= 62:
+                    contexts.append({"dimension": dimension, "value": value, **report})
+        return sorted(contexts, key=lambda item: (item["winRate"], item["signals"]), reverse=True)[:8]
+
+    def _weak_contexts(self, contextual: dict[str, Any]) -> list[dict[str, Any]]:
+        contexts = []
+        for dimension, groups in contextual.items():
+            for value, report in groups.items():
+                if report["signals"] >= 3 and report["winRate"] <= 45:
+                    contexts.append({"dimension": dimension, "value": value, **report})
+        return sorted(contexts, key=lambda item: (item["winRate"], item["signals"]))[:8]
+
+    def _adaptive_recommendation(
+        self,
+        strong_contexts: list[dict[str, Any]],
+        weak_contexts: list[dict[str, Any]],
+        best_timeframes: list[dict[str, Any]],
+        best_assets: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        recommendations = []
+        if strong_contexts:
+            recommendations.append(
+                {
+                    "type": "focus",
+                    "message": "Considere priorizar estes contextos de alta eficácia.",
+                    "contexts": [f"{item['dimension']}={item['value']}" for item in strong_contexts[:3]],
+                }
+            )
+        if weak_contexts:
+            recommendations.append(
+                {
+                    "type": "caution",
+                    "message": "Atenção a contextos com desempenho inferior.",
+                    "contexts": [f"{item['dimension']}={item['value']}" for item in weak_contexts[:3]],
+                }
+            )
+        if best_timeframes:
+            recommendations.append(
+                {
+                    "type": "timeframes",
+                    "message": "Timeframes com melhor histórico de vitória.",
+                    "values": [item["timeframe"] for item in best_timeframes[:3]],
+                }
+            )
+        if best_assets:
+            recommendations.append(
+                {
+                    "type": "assets",
+                    "message": "Ativos com melhor histórico de vitória.",
+                    "values": [item["asset"] for item in best_assets[:3]],
+                }
+            )
+        if not recommendations:
+            recommendations.append(
+                {
+                    "type": "neutral",
+                    "message": "Ainda não há dados contextuais robustos suficientes para recomendação.",
+                    "contexts": [],
+                }
+            )
+        return {
+            "summary": "; ".join(item["message"] for item in recommendations),
+            "details": recommendations,
+            "note": "Nao altera sinais automaticamente; apenas orienta validacao e monitoramento.",
+        }
+
+    def _context_samples(self, signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        samples = []
+        for signal in signals[-80:]:
+            samples.append({
+                "asset": _text(signal.get("asset") or signal.get("symbol")),
+                "timeframe": _text(signal.get("timeframe")),
+                "operationalMode": _text(signal.get("operationalMode")),
+                "score": _num(signal.get("score") or signal.get("confluence_score") or signal.get("signalStrength")),
+                "entryTiming": _text(signal.get("entryTiming") or (signal.get("entry_timing") or {}).get("label") or signal.get("entryStatus")),
+                "direction": _text(signal.get("direction")),
+                "orderFlowContext": _text(signal.get("orderFlowContext")),
+                "multiTimeframeContext": _text(signal.get("multiTimeframeContext")),
+                "liquidity": _text(signal.get("liquidity")),
+                "marketStructure": _text(signal.get("marketStructure")),
+                "priceResult": _text(signal.get("partial_result")),
+                "status": _text(signal.get("status")),
+            })
+        return samples
+
+    def _context_metrics(self, signals: list[dict[str, Any]]) -> dict[str, Any]:
+        wins = sum(1 for signal in signals if signal.get("status") in {"Alvo final atingido", "Alvo 2 atingido", "Alvo 1 atingido"})
+        losses = sum(1 for signal in signals if signal.get("status") in {"Stop atingido", "Cancelado"})
+        total = len(signals)
+        return {
+            "signals": total,
+            "wins": wins,
+            "losses": losses,
+            "winRate": round((wins / total * 100), 2) if total else 0.0,
+            "averageRR": round(self._average([_num(signal.get("riskReward")) for signal in signals]), 2),
+        }
+
     def _weights(self) -> dict[str, Any]:
         best_setups = self.performance.get("bestSetups") or []
         weakest_setups = self.performance.get("weakestSetups") or []
@@ -156,6 +375,10 @@ class AdaptiveLearningEngine:
             return f"{hour}:00"
         except Exception:
             return None
+
+    def _average(self, values: list[float]) -> float:
+        clean = [value for value in values if value == value]
+        return round(sum(clean) / len(clean), 2) if clean else 0.0
 
 
 def build_adaptive_status(performance: dict[str, Any], history: list[dict[str, Any]] | None = None) -> dict[str, Any]:

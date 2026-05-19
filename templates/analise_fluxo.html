@@ -268,6 +268,133 @@
         margin-bottom: 14px;
     }
 
+    .flow-adaptive-card {
+        position: relative;
+        margin-top: 16px;
+        padding: 20px;
+        border: 1px solid rgba(191, 244, 241, 0.12);
+        border-radius: 18px;
+        background:
+            linear-gradient(145deg, rgba(8, 12, 16, 0.95), rgba(9, 16, 23, 0.78)),
+            radial-gradient(circle at 12% 8%, rgba(120, 217, 209, 0.12), transparent 38%),
+            radial-gradient(circle at 88% 15%, rgba(246, 213, 139, 0.09), transparent 42%);
+        box-shadow: 0 24px 44px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        overflow: hidden;
+    }
+
+    .flow-adaptive-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(420px 260px at 50% 12%, rgba(120, 217, 209, 0.16), transparent 72%);
+        opacity: 0.65;
+    }
+
+    .flow-adaptive-card > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .adaptive-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .adaptive-metric {
+        padding: 16px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(10px);
+        transition: transform 0.3s ease;
+    }
+
+    .adaptive-metric:hover {
+        transform: translateY(-3px);
+    }
+
+    .adaptive-metric span,
+    .adaptive-section span {
+        display: block;
+        color: var(--flow-muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+
+    .adaptive-metric strong,
+    .adaptive-section strong {
+        display: block;
+        font-size: 1.15rem;
+        line-height: 1.2;
+        color: var(--flow-text);
+    }
+
+    .flow-adaptive-body {
+        display: grid;
+        gap: 16px;
+    }
+
+    .adaptive-section {
+        padding: 16px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .adaptive-section h3 {
+        margin: 0 0 10px;
+        font-size: 0.85rem;
+        letter-spacing: 0.08em;
+        color: var(--flow-cyan);
+        text-transform: uppercase;
+    }
+
+    .adaptive-chip-list,
+    .adaptive-list {
+        display: grid;
+        gap: 10px;
+    }
+
+    .adaptive-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: var(--flow-text);
+        font-size: 0.8rem;
+        line-height: 1.4;
+    }
+
+    .adaptive-chip.buy { background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.22); }
+    .adaptive-chip.sell { background: rgba(248, 113, 113, 0.12); border-color: rgba(248, 113, 113, 0.22); }
+    .adaptive-chip.caution { background: rgba(246, 213, 139, 0.12); border-color: rgba(246, 213, 139, 0.22); }
+    .adaptive-chip.neutral { background: rgba(120, 217, 209, 0.12); border-color: rgba(120, 217, 209, 0.22); }
+
+    .adaptive-recommendation {
+        padding: 16px;
+        border-radius: 18px;
+        background: rgba(5, 10, 12, 0.84);
+        border: 1px solid rgba(120, 217, 209, 0.12);
+        color: #c8f1ef;
+        line-height: 1.6;
+    }
+
+    .adaptive-recommendation strong {
+        display: block;
+        font-size: 0.95rem;
+        margin-bottom: 8px;
+        color: #edf7f8;
+    }
+
     .flow-chart-card {
         margin-top: 16px;
         overflow: hidden;
@@ -1464,6 +1591,64 @@
         </div>
     </section>
 
+    <section class="flow-adaptive-card">
+        <div class="flow-panel-title">
+            <div>
+                <span class="flow-label">Sistema Adaptativo IA</span>
+                <strong>Recomendações contextuais para o fluxo institucional</strong>
+            </div>
+            <span class="flow-chart-state" id="adaptiveStatusTag">Contextual</span>
+        </div>
+        <div class="adaptive-summary-grid">
+            <div class="adaptive-metric">
+                <span>Contextos analisados</span>
+                <strong id="adaptiveContextsAnalyzed">--</strong>
+            </div>
+            <div class="adaptive-metric">
+                <span>Recomendações</span>
+                <strong id="adaptiveRecommendationCount">--</strong>
+            </div>
+            <div class="adaptive-metric">
+                <span>Contextos fortes</span>
+                <strong id="adaptiveStrongCount">--</strong>
+            </div>
+            <div class="adaptive-metric">
+                <span>Contextos fracos</span>
+                <strong id="adaptiveWeakCount">--</strong>
+            </div>
+        </div>
+        <div class="flow-adaptive-body">
+            <section class="adaptive-section">
+                <h3>Melhores Timeframes</h3>
+                <div id="adaptiveBestTimeframesList" class="adaptive-chip-list">
+                    <span class="adaptive-chip neutral">Sem dados suficientes</span>
+                </div>
+            </section>
+            <section class="adaptive-section">
+                <h3>Melhores Ativos</h3>
+                <div id="adaptiveBestAssetsList" class="adaptive-chip-list">
+                    <span class="adaptive-chip neutral">Sem dados suficientes</span>
+                </div>
+            </section>
+            <section class="adaptive-section">
+                <h3>Contextos Fortes</h3>
+                <div id="adaptiveStrongContexts" class="adaptive-chip-list">
+                    <span class="adaptive-chip buy">Sem contextos fortes</span>
+                </div>
+            </section>
+            <section class="adaptive-section">
+                <h3>Contextos Fracos</h3>
+                <div id="adaptiveWeakContexts" class="adaptive-chip-list">
+                    <span class="adaptive-chip caution">Sem contextos fracos</span>
+                </div>
+            </section>
+        </div>
+        <div class="adaptive-recommendation" id="adaptiveRecommendation">
+            <strong>Resumo adaptativo</strong>
+            A IA adaptativa está aguardando dados suficientes para gerar recomendações de contexto.
+        </div>
+    </section>
+
     <section class="flow-ai-narrative-card">
         <div class="flow-panel-title">
             <div>
@@ -1755,6 +1940,62 @@
         setBar("orderFlowSellBar", sellPressure);
         $("orderFlowAbsorptionCard")?.setAttribute("data-active", String(Boolean(absorption.detected)));
         $("orderFlowExhaustionCard")?.setAttribute("data-active", String(Boolean(exhaustion.detected)));
+    }
+
+    function renderAdaptiveStatus(data) {
+        const strong = Array.isArray(data.strongContexts) ? data.strongContexts : [];
+        const weak = Array.isArray(data.weakContexts) ? data.weakContexts : [];
+        const bestTimeframes = Array.isArray(data.bestTimeframes) ? data.bestTimeframes : [];
+        const bestAssets = Array.isArray(data.bestAssets) ? data.bestAssets : [];
+        const recommendation = data.adaptiveRecommendation || {};
+        const contextual = data.winRateContextual || {};
+        const contextCount = Object.values(contextual).reduce((total, group) => total + Object.keys(group || {}).length, 0);
+
+        text("adaptiveStatusTag", data.success ? "Adaptativo ativo" : "Adaptivo indisponivel");
+        text("adaptiveContextsAnalyzed", contextCount ? `${contextCount} contextos` : "--");
+        text("adaptiveRecommendationCount", recommendation.details ? `${recommendation.details.length} recomendações` : "--");
+        text("adaptiveStrongCount", strong.length ? `${strong.length} fortes` : "--");
+        text("adaptiveWeakCount", weak.length ? `${weak.length} fracos` : "--");
+
+        renderAdaptiveChips("adaptiveBestTimeframesList", bestTimeframes.slice(0, 6), "buy", (item) => item.timeframe || item.key || "--", (item) => `${Math.round(item.winRate || 0)}%`);
+        renderAdaptiveChips("adaptiveBestAssetsList", bestAssets.slice(0, 6), "neutral", (item) => item.asset || item.key || "--", (item) => `${Math.round(item.winRate || 0)}%`);
+        renderAdaptiveChips("adaptiveStrongContexts", strong.slice(0, 6), "buy", (item) => `${item.dimension}:${item.value}`, (item) => `${Math.round(item.winRate || 0)}%`);
+        renderAdaptiveChips("adaptiveWeakContexts", weak.slice(0, 6), "caution", (item) => `${item.dimension}:${item.value}`, (item) => `${Math.round(item.winRate || 0)}%`);
+
+        const summary = recommendation.summary || "Sem recomendações adaptativas robustas no momento.";
+        const detailItems = Array.isArray(recommendation.details) ? recommendation.details : [];
+        const detailChips = detailItems.slice(0, 4).map((item) => `<span class="adaptive-chip ${escapeHtml(item.type || 'neutral')}">${escapeHtml(item.message || item.summary || 'Detalhe')}</span>`).join("");
+        $("adaptiveRecommendation").innerHTML = `
+            <strong>Resumo adaptativo</strong>
+            <div>${escapeHtml(summary)}</div>
+            <div class="adaptive-chip-list">${detailChips}</div>
+        `;
+    }
+
+    function renderAdaptiveChips(id, items, tone, labelFn = (item) => item.label || item.name || item.timeframe || item.asset || item.value || "--", extraFn = () => "") {
+        const container = $(id);
+        if (!container) return;
+        if (!items.length) {
+            container.innerHTML = `<span class="adaptive-chip ${tone}">Sem dados suficientes</span>`;
+            return;
+        }
+        container.innerHTML = items
+            .map((item) => {
+                const label = escapeHtml(String(labelFn(item) || "--"));
+                const extra = escapeHtml(String(extraFn(item) || ""));
+                return `<span class="adaptive-chip ${tone}">${label}${extra ? ` · ${extra}` : ""}</span>`;
+            })
+            .join("");
+    }
+
+    async function loadAdaptiveStatus() {
+        try {
+            const response = await fetch("/api/institutional/adaptive-status?limit=300");
+            const data = await response.json();
+            renderAdaptiveStatus(data);
+        } catch (error) {
+            renderAdaptiveStatus({});
+        }
     }
 
     function mtfDirectionText(frame) {
@@ -2281,6 +2522,7 @@
             renderBehavior(analysis);
             renderOrderFlow(analysis);
             renderInstitutionalHeatmap(analysis);
+            await loadAdaptiveStatus();
             renderMultiTimeframe(analysis);
             renderAiNarrative(analysis);
             renderFlowChart(symbol, timeframe, analysis, requestId);
