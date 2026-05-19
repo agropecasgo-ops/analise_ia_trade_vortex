@@ -75,6 +75,7 @@
     .flow-strength-card,
     .flow-chart-card,
     .flow-order-card,
+    .flow-heatmap-card,
     .flow-mtf-card,
     .flow-ai-narrative-card,
     .flow-trade-card {
@@ -252,6 +253,7 @@
     .flow-strength-card,
     .flow-chart-card,
     .flow-order-card,
+    .flow-heatmap-card,
     .flow-mtf-card,
     .flow-ai-narrative-card,
     .flow-trade-card {
@@ -414,7 +416,8 @@
         overflow-wrap: anywhere;
     }
 
-    .flow-order-card {
+    .flow-order-card,
+    .flow-heatmap-card {
         margin-top: 16px;
     }
 
@@ -453,6 +456,186 @@
     .flow-order-alert[data-active="true"] {
         border-color: rgba(246, 213, 139, 0.34);
         background: linear-gradient(145deg, rgba(88, 69, 22, 0.38), rgba(4, 8, 10, 0.82));
+    }
+
+    .flow-heatmap-card {
+        position: relative;
+        overflow: hidden;
+        background:
+            linear-gradient(145deg, rgba(8, 16, 19, 0.94), rgba(2, 5, 7, 0.92)),
+            radial-gradient(circle at 12% 0%, rgba(120, 217, 209, 0.14), transparent 42%),
+            radial-gradient(circle at 90% 18%, rgba(246, 213, 139, 0.08), transparent 38%);
+    }
+
+    .flow-heatmap-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.28;
+        background-image:
+            linear-gradient(rgba(191, 244, 241, 0.045) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(191, 244, 241, 0.045) 1px, transparent 1px);
+        background-size: 22px 22px;
+        mask-image: linear-gradient(180deg, #000, transparent 88%);
+    }
+
+    .flow-heatmap-card > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .flow-heatmap-layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1fr);
+        gap: 14px;
+    }
+
+    .flow-heatmap-core {
+        display: grid;
+        gap: 12px;
+        padding: 15px;
+        border: 1px solid rgba(191, 244, 241, 0.10);
+        border-radius: 12px;
+        background: rgba(3, 7, 9, 0.56);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .flow-pressure-axis {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+    }
+
+    .flow-pressure-side {
+        display: grid;
+        gap: 7px;
+    }
+
+    .flow-pressure-side span {
+        color: var(--flow-muted);
+        font-size: 0.68rem;
+        font-weight: 850;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .flow-pressure-side strong {
+        color: #f2fbfb;
+        font-size: 1.7rem;
+        line-height: 1;
+    }
+
+    .flow-pressure-track {
+        display: flex;
+        align-items: flex-end;
+        height: 118px;
+        overflow: hidden;
+        border: 1px solid rgba(191, 244, 241, 0.10);
+        border-radius: 999px;
+        background: rgba(5, 10, 12, 0.76);
+        box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.42);
+    }
+
+    .flow-pressure-fill {
+        width: 100%;
+        height: var(--heat, 0%);
+        min-height: 4px;
+        border-radius: inherit;
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 34%),
+            linear-gradient(180deg, var(--heat-color), rgba(3, 7, 9, 0.12));
+        box-shadow: 0 0 24px color-mix(in srgb, var(--heat-color) 42%, transparent);
+        transition: height 0.55s ease, box-shadow 0.55s ease;
+    }
+
+    .flow-heatmap-pulse {
+        display: grid;
+        place-items: center;
+        width: 56px;
+        aspect-ratio: 1;
+        border: 1px solid rgba(191, 244, 241, 0.14);
+        border-radius: 50%;
+        color: #effefd;
+        background:
+            radial-gradient(circle, color-mix(in srgb, var(--pulse-color, var(--flow-cyan)) 42%, transparent) 0 38%, transparent 39%),
+            rgba(5, 10, 12, 0.88);
+        box-shadow: 0 0 34px color-mix(in srgb, var(--pulse-color, var(--flow-cyan)) 36%, transparent);
+    }
+
+    .flow-heatmap-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .flow-heatmap-summary div,
+    .flow-heatmap-cell {
+        min-width: 0;
+        border: 1px solid rgba(191, 244, 241, 0.10);
+        border-radius: 12px;
+        background:
+            linear-gradient(145deg, rgba(17, 31, 36, 0.76), rgba(3, 7, 9, 0.86)),
+            radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--heat-color, var(--flow-cyan)) 18%, transparent), transparent 62%);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.04),
+            0 0 24px color-mix(in srgb, var(--heat-color, var(--flow-cyan)) 22%, transparent);
+    }
+
+    .flow-heatmap-summary div {
+        padding: 11px;
+    }
+
+    .flow-heatmap-summary span,
+    .flow-heatmap-cell span {
+        display: block;
+        color: var(--flow-muted);
+        font-size: 0.66rem;
+        font-weight: 850;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .flow-heatmap-summary strong,
+    .flow-heatmap-cell strong {
+        display: block;
+        margin-top: 7px;
+        color: #f2fbfb;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+    }
+
+    .flow-heatmap-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .flow-heatmap-cell {
+        display: grid;
+        align-content: space-between;
+        min-height: 128px;
+        padding: 13px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .flow-heatmap-cell::after {
+        content: "";
+        position: absolute;
+        inset: auto 12px 11px 12px;
+        height: 3px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--heat-color, var(--flow-cyan)) var(--intensity-percent, 0%), rgba(191, 244, 241, 0.12) 0);
+        box-shadow: 0 0 14px color-mix(in srgb, var(--heat-color, var(--flow-cyan)) 38%, transparent);
+    }
+
+    .flow-heatmap-cell small {
+        display: block;
+        margin-top: 8px;
+        color: #9cb4ba;
+        line-height: 1.35;
     }
 
     .flow-mtf-grid {
@@ -642,6 +825,7 @@
 
     @media (max-width: 980px) {
         .flow-ai-layout,
+        .flow-heatmap-layout,
         .flow-side-stack,
         .flow-score-card,
         .flow-ai-shell .flow-controls {
@@ -666,6 +850,8 @@
         .flow-order-layout,
         .flow-order-kpis,
         .flow-order-alerts,
+        .flow-heatmap-grid,
+        .flow-heatmap-summary,
         .flow-mtf-grid,
         .flow-mtf-footer,
         .flow-ai-narrative-grid {
@@ -856,6 +1042,75 @@
                 <div class="flow-order-alert" id="orderFlowExhaustionCard" data-active="false">
                     <span>Exhaustion signal</span>
                     <strong id="orderFlowExhaustion">--</strong>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="flow-heatmap-card">
+        <div class="flow-panel-title">
+            <div>
+                <span class="flow-label">Heatmap institucional</span>
+                <strong id="flowHeatmapTitle">Pressao, desequilibrio e liquidez</strong>
+            </div>
+            <span class="flow-chart-state" id="flowHeatmapState">Contextual</span>
+        </div>
+        <div class="flow-heatmap-layout">
+            <div class="flow-heatmap-core">
+                <div class="flow-pressure-axis">
+                    <div class="flow-pressure-side buy">
+                        <span>Compradora</span>
+                        <strong id="heatmapBuyValue">0%</strong>
+                        <div class="flow-pressure-track">
+                            <div class="flow-pressure-fill" id="heatmapBuyFill" style="--heat:0%;--heat-color:#34d399"></div>
+                        </div>
+                    </div>
+                    <div class="flow-heatmap-pulse" id="heatmapPulse" style="--pulse:0;--pulse-color:#78d9d1">
+                        <i class="fas fa-bolt"></i>
+                    </div>
+                    <div class="flow-pressure-side sell">
+                        <span>Vendedora</span>
+                        <strong id="heatmapSellValue">0%</strong>
+                        <div class="flow-pressure-track">
+                            <div class="flow-pressure-fill" id="heatmapSellFill" style="--heat:0%;--heat-color:#f87171"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flow-heatmap-summary">
+                    <div id="heatmapDominanceBox" style="--intensity:0;--intensity-percent:0%;--heat-color:#78d9d1">
+                        <span>Dominancia</span>
+                        <strong id="heatmapDominance">Neutra</strong>
+                    </div>
+                    <div id="heatmapLiquidityBox" style="--intensity:0;--intensity-percent:0%;--heat-color:#78d9d1">
+                        <span>Liquidez</span>
+                        <strong id="heatmapLiquidity">--</strong>
+                    </div>
+                    <div id="heatmapStructureBox" style="--intensity:0;--intensity-percent:0%;--heat-color:#78d9d1">
+                        <span>Estrutura</span>
+                        <strong id="heatmapStructure">--</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="flow-heatmap-grid" id="flowInstitutionalHeatmap">
+                <div class="flow-heatmap-cell" style="--intensity:0;--intensity-percent:0%;--heat-color:#34d399">
+                    <span>Buy pressure</span>
+                    <strong>0%</strong>
+                    <small>Aguardando fluxo.</small>
+                </div>
+                <div class="flow-heatmap-cell" style="--intensity:0;--intensity-percent:0%;--heat-color:#f87171">
+                    <span>Sell pressure</span>
+                    <strong>0%</strong>
+                    <small>Aguardando fluxo.</small>
+                </div>
+                <div class="flow-heatmap-cell" style="--intensity:0;--intensity-percent:0%;--heat-color:#f6d58b">
+                    <span>Imbalance</span>
+                    <strong>0%</strong>
+                    <small>Sem leitura ainda.</small>
+                </div>
+                <div class="flow-heatmap-cell" style="--intensity:0;--intensity-percent:0%;--heat-color:#78d9d1">
+                    <span>Contexto</span>
+                    <strong>--</strong>
+                    <small>Liquidez e estrutura.</small>
                 </div>
             </div>
         </div>
@@ -1053,6 +1308,109 @@
         if (!signal || !signal.detected) return "NAO DETECTADO";
         const confidence = Number(signal.confidence || 0);
         return `${signal.side || "DETECTADO"}${confidence ? ` - ${Math.round(confidence)}%` : ""}`;
+    }
+
+    function heatColor(tone) {
+        return {
+            buy: "#34d399",
+            sell: "#f87171",
+            caution: "#f6d58b",
+            neutral: "#78d9d1",
+        }[tone] || "#78d9d1";
+    }
+
+    function setHeatStyle(element, intensity, tone) {
+        if (!element) return;
+        const value = clamp(intensity);
+        element.style.setProperty("--intensity", value);
+        element.style.setProperty("--intensity-percent", `${value}%`);
+        element.style.setProperty("--heat-color", heatColor(tone));
+    }
+
+    function setPressureFill(id, value, tone) {
+        const element = $(id);
+        if (!element) return;
+        element.style.setProperty("--heat", `${clamp(value)}%`);
+        element.style.setProperty("--heat-color", heatColor(tone));
+    }
+
+    function liquidityCount(liquidity) {
+        const zones = Array.isArray(liquidity.zones) ? liquidity.zones.length : 0;
+        const internal = Array.isArray(liquidity.internal) ? liquidity.internal.length : liquidity.internal ? 1 : 0;
+        const external = Array.isArray(liquidity.external) ? liquidity.external.length : liquidity.external ? 1 : 0;
+        return zones + internal + external + (liquidity.nearest ? 1 : 0);
+    }
+
+    function structureHeat(structure) {
+        return [
+            structure.bos?.detected,
+            structure.choch?.detected,
+            structure.fvg?.valid || structure.fvg?.detected,
+            structure.order_block?.valid,
+        ].filter(Boolean).length * 25;
+    }
+
+    function heatmapCell(label, value, detail, intensity, tone) {
+        return `
+            <div class="flow-heatmap-cell" style="--intensity:${clamp(intensity)};--intensity-percent:${clamp(intensity)}%;--heat-color:${heatColor(tone)}">
+                <span>${escapeHtml(label)}</span>
+                <strong>${escapeHtml(value)}</strong>
+                <small>${escapeHtml(detail)}</small>
+            </div>
+        `;
+    }
+
+    function renderInstitutionalHeatmap(analysis) {
+        const behavior = analysis.institutionalBehavior || {};
+        const orderFlow = analysis.orderFlowContext || behavior.orderFlowContext || {};
+        const liquidity = analysis.liquidity || {};
+        const structure = analysis.marketStructure || {};
+        const absorption = orderFlow.absorption_signal || {};
+        const exhaustion = orderFlow.exhaustion_signal || {};
+        const buyPressure = clamp(orderFlow.buy_pressure);
+        const sellPressure = clamp(orderFlow.sell_pressure);
+        const flowStrength = clamp(orderFlow.flow_strength);
+        const imbalance = clamp(orderFlow.imbalance);
+        const dominanceGap = Math.abs(buyPressure - sellPressure);
+        const dominanceTone = buyPressure > sellPressure ? "buy" : sellPressure > buyPressure ? "sell" : "neutral";
+        const liquidityHeat = clamp(liquidityCount(liquidity) * 18 + (liquidity.sweep?.detected ? 22 : 0));
+        const structureIntensity = clamp(structureHeat(structure));
+        const absorptionIntensity = absorption.detected ? clamp(absorption.confidence || 72) : 0;
+        const exhaustionIntensity = exhaustion.detected ? clamp(exhaustion.confidence || 72) : 0;
+        const pulseTone = imbalance >= 55 ? "caution" : dominanceTone;
+        const liquidityLabel = liquidity.sweep?.detected ? `Sweep ${compact(liquidity.sweep)}` : compact(liquidity.nearest || liquidity.zones || "--");
+        const structureLabel = structure.valid ? (structure.direction || "VALIDA") : "AGUARDANDO";
+
+        text("heatmapBuyValue", `${Math.round(buyPressure)}%`);
+        text("heatmapSellValue", `${Math.round(sellPressure)}%`);
+        text("heatmapDominance", dominanceGap >= 8 ? (dominanceTone === "buy" ? "Compradora" : "Vendedora") : "Equilibrada");
+        text("heatmapLiquidity", liquidityLabel);
+        text("heatmapStructure", structureLabel);
+        text("flowHeatmapState", flowStrength >= 65 ? "Intenso" : flowStrength >= 35 ? "Moderado" : "Leve");
+        setPressureFill("heatmapBuyFill", buyPressure, "buy");
+        setPressureFill("heatmapSellFill", sellPressure, "sell");
+        setHeatStyle($("heatmapDominanceBox"), dominanceGap, dominanceTone);
+        setHeatStyle($("heatmapLiquidityBox"), liquidityHeat, liquidityHeat >= 55 ? "caution" : "neutral");
+        setHeatStyle($("heatmapStructureBox"), structureIntensity, structure.direction === "BUY" ? "buy" : structure.direction === "SELL" ? "sell" : "neutral");
+
+        const pulse = $("heatmapPulse");
+        if (pulse) {
+            pulse.style.setProperty("--pulse", Math.max(flowStrength, imbalance));
+            pulse.style.setProperty("--pulse-color", heatColor(pulseTone));
+        }
+
+        const grid = $("flowInstitutionalHeatmap");
+        if (!grid) return;
+        grid.innerHTML = [
+            heatmapCell("Buy pressure", `${Math.round(buyPressure)}%`, orderFlow.flow_direction || "Pressao compradora contextual", buyPressure, "buy"),
+            heatmapCell("Sell pressure", `${Math.round(sellPressure)}%`, orderFlow.flow_direction || "Pressao vendedora contextual", sellPressure, "sell"),
+            heatmapCell("Flow strength", `${Math.round(flowStrength)}%`, flowStrength >= 65 ? "Fluxo dominante no candle/contexto." : "Fluxo em observacao.", flowStrength, dominanceTone),
+            heatmapCell("Imbalance", `${Math.round(imbalance)}%`, imbalance >= 55 ? "Desequilibrio relevante." : "Desequilibrio controlado.", imbalance, imbalance >= 55 ? "caution" : "neutral"),
+            heatmapCell("Absorcao", signalLabel(absorption), absorption.detected ? "Possivel defesa institucional." : "Sem absorcao ativa.", absorptionIntensity, absorption.detected ? "caution" : "neutral"),
+            heatmapCell("Exaustao", signalLabel(exhaustion), exhaustion.detected ? "Pressao pode estar perdendo eficiencia." : "Sem exaustao ativa.", exhaustionIntensity, exhaustion.detected ? "caution" : "neutral"),
+            heatmapCell("Liquidez", liquidityLabel, liquidity.sweep?.detected ? "Varredura contextual detectada." : "Mapa de liquidez contextual.", liquidityHeat, liquidityHeat >= 55 ? "caution" : "neutral"),
+            heatmapCell("Estrutura", structureLabel, compact(structure.bos || structure.choch || structure.fvg || "--"), structureIntensity, structure.direction === "BUY" ? "buy" : structure.direction === "SELL" ? "sell" : "neutral"),
+        ].join("");
     }
 
     function renderOrderFlow(analysis) {
@@ -1424,6 +1782,7 @@
             $("flowNarrative").textContent = normalize(analysis.aiExplanation || data.aiNarrative?.summary || "Leitura concluída.");
             renderBehavior(analysis);
             renderOrderFlow(analysis);
+            renderInstitutionalHeatmap(analysis);
             renderMultiTimeframe(analysis);
             renderAiNarrative(analysis);
             renderFlowChart(symbol, timeframe, analysis, requestId);
@@ -1435,6 +1794,7 @@
             text("flowDirection", "SEM CONFLUENCIA");
             $("flowDecisionCard")?.setAttribute("data-tone", "blocked");
             renderOrderFlow({});
+            renderInstitutionalHeatmap({});
             renderMultiTimeframe({});
             renderAiNarrative({});
             clearFlowChart("FALHA NO GRAFICO");
